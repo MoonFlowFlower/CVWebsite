@@ -193,12 +193,16 @@ const expectedHandoff = {
   "works-out": { min: 0.92, max: 1.0 },
   ...Object.fromEntries(worksShotNames.filter((shotName) => shotName !== "works-out").map((shotName) => [shotName, { min: 0.99, max: 1.01 }])),
 };
+// worksOpacity is the final WORKS material alpha (fillOpacity x target). The
+// 2026-09-26 reference pass dimmed fillOpacity 0.9 -> 0.28 (linear alpha; the
+// old value read near-white) and the card-phase ghost to ~0.025, so these
+// ranges are the previous ones scaled by ~0.31.
 const expectedShotStates = {
   "works-intro-enter-early": {
     mode: "hidden",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.12, max: 0.34 },
+    worksOpacity: { min: 0.035, max: 0.11 },
     cardsOpacity: { max: 0.04 },
     moonflowOpacity: { min: 0.12, max: 0.5 },
   },
@@ -206,7 +210,7 @@ const expectedShotStates = {
     mode: "hidden",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.72, max: 1.01 },
+    worksOpacity: { min: 0.22, max: 0.3 },
     cardsOpacity: { max: 0.04 },
     moonflowOpacity: { max: 0.08 },
   },
@@ -214,7 +218,7 @@ const expectedShotStates = {
     mode: "hidden",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.7, max: 1.01 },
+    worksOpacity: { min: 0.21, max: 0.3 },
     cardsOpacity: { max: 0.04 },
     moonflowOpacity: { max: 0.08 },
   },
@@ -222,7 +226,7 @@ const expectedShotStates = {
     mode: "hidden",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.08 },
+    worksOpacity: { max: 0.025 },
     cardsOpacity: { max: 0.04 },
     moonflowOpacity: { max: 0.02 },
   },
@@ -230,7 +234,7 @@ const expectedShotStates = {
     mode: "single-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.08, max: 0.26 },
+    worksOpacity: { min: 0.012, max: 0.05 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -242,7 +246,7 @@ const expectedShotStates = {
     mode: "single-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.08, max: 0.26 },
+    worksOpacity: { min: 0.012, max: 0.05 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -254,7 +258,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.08, max: 0.26 },
+    worksOpacity: { min: 0.012, max: 0.05 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -267,7 +271,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.08, max: 0.26 },
+    worksOpacity: { min: 0.012, max: 0.05 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     card0Visible: true,
@@ -279,7 +283,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { min: 0.08, max: 0.26 },
+    worksOpacity: { min: 0.012, max: 0.05 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 1,
@@ -294,7 +298,8 @@ const expectedShotStates = {
 const laneTargets = {
   leadCenter: {
     centerXRatio: { min: 0.36, max: 0.6 },
-    centerYRatio: { min: 0.26, max: 0.48 },
+    // Reference stage8 lead card centre sits at ~0.50 of viewport height.
+    centerYRatio: { min: 0.3, max: 0.58 },
     widthRatio: { min: 0.43, max: 0.7 },
   },
   supportLeft: {

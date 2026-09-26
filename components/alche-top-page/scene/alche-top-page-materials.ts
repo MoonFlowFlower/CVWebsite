@@ -29,6 +29,8 @@ export interface PrismIceUniforms {
   uLensWarpStrength: { value: number };
   uChromaticStrength: { value: number };
   uSceneRefractionMix: { value: number };
+  // 1 = violet kv crystal, 0 = neutral silver (over the zebra works wall).
+  uVioletMix: { value: number };
 }
 
 function spectralPalette(t: number) {
@@ -68,6 +70,7 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
     shader.uniforms.uLensWarpStrength = uniforms.uLensWarpStrength;
     shader.uniforms.uChromaticStrength = uniforms.uChromaticStrength;
     shader.uniforms.uSceneRefractionMix = uniforms.uSceneRefractionMix;
+    shader.uniforms.uVioletMix = uniforms.uVioletMix;
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "void main() {",
@@ -80,6 +83,7 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
           uniform float uLensWarpStrength;
           uniform float uChromaticStrength;
           uniform float uSceneRefractionMix;
+          uniform float uVioletMix;
 
           float alcheIceHash(vec2 p) {
             p = fract(p * vec2(123.34, 345.45));
@@ -194,7 +198,7 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
               vec3 refrB = texture2D(uSceneTexture, clamp(screenUv + bodyOffset * 1.4 - frostJitter * 1.7, vec2(0.001), vec2(0.999))).rgb;
               vec3 refracted = (refrA + refrB) * 0.5;
               float refrLum = dot(refracted, vec3(0.2126, 0.7152, 0.0722));
-              vec3 violet = vec3(0.3, 0.13, 0.95);
+              vec3 violet = mix(vec3(0.62, 0.62, 0.68), vec3(0.3, 0.13, 0.95), clamp(uVioletMix, 0.0, 1.0));
               vec3 body = refracted * mix(vec3(1.0), violet * 1.25, 0.78) * 1.35 + violet * 0.05;
               float frostMask = smoothstep(0.2, 0.8, refrLum) * smoothstep(0.35, 0.9, broadNoise + grainNoise * 0.4);
               body = mix(body, vec3(refrLum * 1.1) + violet * 0.08, frostMask * 0.5);
@@ -267,21 +271,27 @@ export function createWorksPosterMaterial(map: THREE.Texture, uniforms: WorksPos
         `
           #ifdef USE_MAP
             vec2 posterUv = vMapUv;
-            // Moving vertical specular streaks (reference LED-screen highlights).
-            float streakPhase = posterUv.x * 4.6 - posterUv.y * 0.55 - uTime * 0.34;
-            float streakA = smoothstep(0.9, 0.995, sin(streakPhase * 6.2831) * 0.5 + 0.5);
-            float streakB = smoothstep(0.86, 0.99, sin(streakPhase * 2.7 + 1.7) * 0.5 + 0.5);
-            float streak = clamp(streakA * 0.75 + streakB * 0.45, 0.0, 1.0);
+            // Reference cards (video 11.1s): slight RGB split across the
+            // image, a thin glossy rim, and one soft diagonal glint. No
+            // full-height streak bars, no wide rainbow frame.
+            vec2 splitDir = (posterUv - 0.5) * 0.006;
+            vec3 posterSplit = vec3(
+              texture2D(map, clamp(posterUv + splitDir, vec2(0.0), vec2(1.0))).r,
+              gl_FragColor.g,
+              texture2D(map, clamp(posterUv - splitDir, vec2(0.0), vec2(1.0))).b
+            );
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, posterSplit, 0.85 * uSheen);
 
-            // Chromatic fringe hugging the card border.
             float edgeDist = min(min(posterUv.x, 1.0 - posterUv.x), min(posterUv.y, 1.0 - posterUv.y));
-            float fringeMask = 1.0 - smoothstep(0.0, 0.055, edgeDist);
-            vec3 fringe = posterHsv2rgb(vec3(fract(posterUv.x * 1.4 + posterUv.y * 0.9 + uTime * 0.05), 0.72, 1.0));
+            float rimMask = 1.0 - smoothstep(0.0, 0.012, edgeDist);
+            vec3 fringe = posterHsv2rgb(vec3(fract(posterUv.x * 1.4 + posterUv.y * 0.9 + uTime * 0.05), 0.55, 1.0));
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.92, 0.94, 1.0) + fringe * 0.12, rimMask * 0.55 * uSheen);
 
-            gl_FragColor.rgb += vec3(1.0, 0.99, 0.97) * streak * 0.2 * uSheen;
-            gl_FragColor.rgb += fringe * fringeMask * 0.28 * uSheen;
+            float glintPhase = posterUv.x * 1.1 + posterUv.y * 0.6 - uTime * 0.05;
+            float glint = smoothstep(0.93, 1.0, sin(glintPhase * 6.2831) * 0.5 + 0.5);
+            gl_FragColor.rgb += vec3(1.0, 0.99, 0.97) * glint * 0.06 * uSheen;
             // faint screen-edge falloff keeps the panel reading as a lit screen
-            gl_FragColor.rgb *= 0.92 + 0.08 * smoothstep(0.0, 0.12, edgeDist);
+            gl_FragColor.rgb *= 0.94 + 0.06 * smoothstep(0.0, 0.08, edgeDist);
           #endif
           #include <dithering_fragment>
         `,
@@ -305,6 +315,7 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       uGlow: { value: 0.7 },
       uExposure: { value: 1 },
       uFlatten: { value: 0 },
+      uZebra: { value: 0 },
       uSceneFade: { value: 1 },
       uWallRadius: { value: 5 },
       uWallHalfWidth: { value: 11 },
@@ -350,6 +361,7 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       uniform float uGlow;
       uniform float uExposure;
       uniform float uFlatten;
+      uniform float uZebra;
       uniform float uSceneFade;
       uniform vec2 uViewportPx;
 
@@ -443,8 +455,22 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
         darkColor += vec3(0.012, 0.012, 0.016) * sweepBand * (0.35 + tileLevel * 0.65);
         darkColor += vec3(0.004, 0.004, 0.006) * sweepBandWide * tileLevel;
 
-        darkColor += violetHaze * centerGlow * (0.55 + dotField * 0.45);
-        darkColor += violetCore * glowCore * (0.35 + dotField * 0.35);
+        float zebraMix = smoothstep(0.0, 1.0, clamp(uZebra, 0.0, 1.0));
+        darkColor += violetHaze * centerGlow * (0.55 + dotField * 0.45) * (1.0 - zebraMix);
+        darkColor += violetCore * glowCore * (0.35 + dotField * 0.35) * (1.0 - zebraMix);
+
+        // Works-entry LED content (reference 7.5-9.0s): bold warped
+        // greyscale zebra bands drifting diagonally across the tiles.
+        if (zebraMix > 0.001) {
+          float warp = sin(uv.y * 7.0 + uTime * 0.22) * 0.55 + sin(uv.x * 4.3 - uv.y * 2.1 + uTime * 0.13) * 0.8;
+          float zebraPhase = (uv.x * 2.4 + uv.y * 3.1) * 11.0 + warp * 1.6 - uTime * 0.3;
+          float zebraBand = smoothstep(-0.12, 0.3, sin(zebraPhase));
+          float zebraLevel = zebraBand * (0.55 + tileLevel * 0.45) * (0.75 + dotField * 0.35);
+          vec3 zebraColor = mix(vec3(0.0025), vec3(0.3, 0.3, 0.31), zebraLevel);
+          zebraColor += vec3(0.011, 0.011, 0.016) * microGrid;
+          darkColor = mix(darkColor, zebraColor, zebraMix);
+        }
+
         darkColor = mix(darkColor, darkSeamColor, frameGrid * 0.94);
 
         // Sparse "+" marker lattice floating on the wall (reference kv).

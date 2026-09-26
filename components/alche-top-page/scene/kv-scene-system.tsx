@@ -360,6 +360,7 @@ function CurvedMediaWall({ sceneState, wallTexturePath, layerDebugRef }: CurvedM
     material.uniforms.uExposure.value = THREE.MathUtils.damp(material.uniforms.uExposure.value, sceneState.kv.wallExposure, 3.4, delta);
     material.uniforms.uWhiteMix.value = THREE.MathUtils.damp(material.uniforms.uWhiteMix.value, sceneState.kv.wallWhiteMix, 3.4, delta);
     material.uniforms.uFlatten.value = THREE.MathUtils.damp(material.uniforms.uFlatten.value, sceneState.kv.wallFlatten, 3.2, delta);
+    material.uniforms.uZebra.value = THREE.MathUtils.damp(material.uniforms.uZebra.value, sceneState.kv.wallZebra, 3.6, delta);
     material.uniforms.uSceneFade.value = THREE.MathUtils.damp(material.uniforms.uSceneFade.value, wallVisible, 3.2, delta);
     material.uniforms.uWallRadius.value = effectiveRadius;
     material.uniforms.uWallHalfWidth.value = effectiveRadius * ALCHE_TOP_WALL_PARAMETRIC_WIDTH_RATIO;
@@ -379,6 +380,8 @@ function CurvedMediaWall({ sceneState, wallTexturePath, layerDebugRef }: CurvedM
   );
 }
 
+const TITLE_DIM_COLOR = new THREE.Color(0x6c6f78);
+
 function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneSystemProps) {
   const { camera, size } = useThree();
   const textRef = useRef<Text>(null);
@@ -389,6 +392,7 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     [effectiveRadius],
   );
   const measuredWidthRef = useRef(1);
+  const titleColorRef = useRef(new THREE.Color(0xf6f8ff));
   const textReadyRef = useRef(false);
   const text = useMemo(() => new Text(), []);
 
@@ -439,6 +443,12 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     const baseVisibility = sceneState.kv.visible * (sceneState.activeSection === "loading" || sceneState.activeSection === "kv" ? sceneState.kv.wordVisibility : 1);
     const handoffFade = 1 - smoothstep(remapRange(handoff, 0.18, 0.36));
     const visibility = baseVisibility * handoffFade;
+    // Reference 6.5-7.0s: the wordmark greys out while the crystal turns,
+    // before it fades behind the works wall.
+    const dimMix = smoothstep(remapRange(handoff, 0.03, 0.16));
+    titleColorRef.current.setHex(0xf6f8ff).lerp(TITLE_DIM_COLOR, dimMix);
+    textRef.current.color = titleColorRef.current.getHex();
+    textRef.current.outlineColor = textRef.current.color;
     const distance = perspectiveCamera.position.distanceTo(targetPosition);
     const viewportHeight = 2 * Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov * 0.5)) * distance;
     const viewportWidth = viewportHeight * (size.width / Math.max(size.height, 1));
@@ -1101,6 +1111,7 @@ function CenterHeroModel({
       uLensWarpStrength: { value: ALCHE_TOP_PRISM_READABLE_LENS_WARP_STRENGTH },
       uChromaticStrength: { value: ALCHE_TOP_PRISM_READABLE_CHROMATIC_STRENGTH },
       uSceneRefractionMix: { value: 1 },
+      uVioletMix: { value: 1 },
     };
     const maskedLineArtUniforms: MaskedPrismLineArtUniforms = {
       uOpacity: { value: 0 },
@@ -1300,6 +1311,12 @@ function CenterHeroModel({
     const crystalEdgeVisibility = renderMode === "full" ? iceVisibilityTarget * ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY : 0;
     const edgeVisibilityTarget = renderMode === "full" ? crystalEdgeVisibility : edgeBridgeVisibility;
     texturedScene.prismIceUniforms.uSceneRefractionMix.value = splitEnabled ? 0.28 : 1;
+    texturedScene.prismIceUniforms.uVioletMix.value = THREE.MathUtils.damp(
+      texturedScene.prismIceUniforms.uVioletMix.value,
+      1 - sceneState.kv.wallZebra,
+      3.6,
+      delta,
+    );
     texturedScene.shadedMaterials.forEach((material) => {
       const iceDamp = splitEnabled ? 10 : 4;
       material.opacity = THREE.MathUtils.damp(material.opacity, iceVisibilityTarget * ALCHE_TOP_PRISM_ICE_OPACITY, iceDamp, delta);
@@ -1424,6 +1441,13 @@ function CenterHeroModel({
       ALCHE_TOP_CENTER_MODEL.rotationDamp,
       delta,
     );
+    // The frame is symmetric under a half turn about Y, so when the target
+    // jumps by ~pi (e.g. leaving the works-entry half turn) re-express the
+    // current angle one half turn over instead of visibly spinning back.
+    const yawGap = sceneState.kv.prismRotationY - groupRef.current.rotation.y;
+    if (Math.abs(yawGap) > Math.PI * 0.75) {
+      groupRef.current.rotation.y += Math.sign(yawGap) * Math.PI;
+    }
     groupRef.current.rotation.y = THREE.MathUtils.damp(
       groupRef.current.rotation.y,
       sceneState.kv.prismRotationY,
@@ -1448,13 +1472,10 @@ function CenterHeroModel({
     // through-hole in perspective. Reference kv crystal is a shallow frame,
     // so squash depth while front-facing and restore it for the mission turn
     // (whose side-slab read depends on the full depth).
-    const turnMix = smoothstep(
-      remapRange(
-        Math.abs(groupRef.current.rotation.y - ALCHE_TOP_CENTER_MODEL.baseRotationY) / ALCHE_TOP_CENTER_MODEL.missionTurnRadians,
-        0.25,
-        0.9,
-      ),
-    );
+    // Distance to the nearest front-facing yaw (0 or pi, by half-turn symmetry).
+    const yawFromBase = Math.abs(groupRef.current.rotation.y - ALCHE_TOP_CENTER_MODEL.baseRotationY) % Math.PI;
+    const yawFromFront = Math.min(yawFromBase, Math.PI - yawFromBase);
+    const turnMix = smoothstep(remapRange(yawFromFront / ALCHE_TOP_CENTER_MODEL.missionTurnRadians, 0.25, 0.9));
     const depthScale = texturedScene.modelScale * THREE.MathUtils.lerp(ALCHE_TOP_CENTER_MODEL.kvDepthScale, 1, turnMix);
     texturedScene.shadedScene.scale.z = depthScale;
     texturedScene.edgeScene.scale.z = depthScale;

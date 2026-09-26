@@ -104,6 +104,8 @@ export interface AlcheKvSceneState {
   wallExposure: number;
   wallWhiteMix: number;
   wallFlatten: number;
+  // 0 = violet kv LED haze, 1 = greyscale zebra LED content (works entry).
+  wallZebra: number;
   wordVisibility: number;
   prismVisibility: number;
   prismScale: number;
@@ -346,9 +348,12 @@ export const ALCHE_TOP_WALL_WORD = {
   y: -0.04,
   fontPath: "/fonts/space-grotesk-500.woff",
   fontSize: 2.68,
-  fillOpacity: 0.9,
+  // Linear alpha: 0.28 reads as the reference's mid-grey LED lettering
+  // (~145/255) instead of near-white.
+  fillOpacity: 0.28,
   // Dim ghost read of the word behind the flying cards (reference behavior).
-  ghostOpacity: 0.12,
+  // Multiplied by fillOpacity: effective linear alpha ~0.025.
+  ghostOpacity: 0.09,
   wallInset: 0.0,
   worldZ: -4.9,
   surfaceOffset: 0.0,
@@ -363,10 +368,11 @@ export const ALCHE_TOP_WALL_WORD = {
 } as const;
 
 export const ALCHE_TOP_WORKS_CARDS = {
-  // Reference cards read near full-viewport with a strong cloth-like bulge.
+  // Reference lead card spans ~51% x 57% of the viewport with a gentle bend
+  // (measured on 滚动stage8 / video 11.1s).
   width: 3.35,
   height: 1.9,
-  bendRadius: 3.1,
+  bendRadius: 6.2,
   segments: 80,
   groupY: 0.22,
   groupZ: -4.15,
@@ -681,8 +687,10 @@ export function deriveKvSceneState(introProgress: number, heroShotId: AlcheHeroS
     wallExposure: heroShot?.chamberMassing.roomExposure ?? 0.94,
     wallWhiteMix: 0,
     wallFlatten: 0,
+    wallZebra: 0,
     wordVisibility: intro.wordReveal * (1 - handoffMix),
-    prismVisibility: Math.max(0.12, 1 - handoffMix * 0.74),
+    // Reference keeps the crystal fully present through the works entry.
+    prismVisibility: 1,
     prismScale: (heroShot?.prismEmphasis.scale ?? 1) * ALCHE_HERO_LOCK.prism.scale,
     prismRotationX: ALCHE_TOP_CENTER_MODEL.baseRotationX,
     prismRotationY: ALCHE_TOP_CENTER_MODEL.baseRotationY,
@@ -970,6 +978,23 @@ export function deriveTopSceneState(
 
   if (runtimeSection === "works_intro") {
     kv.wordVisibility *= 1 - worksIntro.alcheFade;
+    // Reference 6.0-8.0s: the crystal tumbles a half turn toward the camera
+    // (edge-on at the midpoint), swelling then settling upright. A half turn
+    // about Y maps the symmetric frame onto itself, so it lands "upright".
+    const spin = smoothstep(remapRange(progress, 0.04, 0.92));
+    const wobble = Math.sin(Math.PI * spin);
+    kv.prismRotationY = ALCHE_TOP_CENTER_MODEL.baseRotationY + Math.PI * spin;
+    kv.prismRotationX = ALCHE_TOP_CENTER_MODEL.baseRotationX + 0.3 * wobble;
+    kv.prismRotationZ = ALCHE_TOP_CENTER_MODEL.baseRotationZ - 0.24 * wobble;
+    kv.prismGroupScale = 1 + 0.42 * wobble;
+    kv.wallZebra = smoothstep(remapRange(progress, 0.3, 0.8));
+  }
+
+  if (runtimeSection === "works") {
+    // Upright after the half turn; zebra wall holds behind the WORKS word and
+    // clears as the first card arrives.
+    kv.prismRotationY = ALCHE_TOP_CENTER_MODEL.baseRotationY + Math.PI;
+    kv.wallZebra = 1 - smoothstep(remapRange(progress, 0.62, 1.0));
   }
 
   const worksOutroWallFlatten = worksOutro.clearMix * 0.78;
@@ -981,7 +1006,7 @@ export function deriveTopSceneState(
     kv.wordVisibility = 0;
     kv.prismVisibility =
       runtimeSection === "works"
-        ? 0.28 * (1 - works.cardMix * 0.68)
+        ? 1 - smoothstep(remapRange(progress, 0.6, 0.95))
         : runtimeSection === "works_outro"
           ? // Reference works_outro: the glass A returns front-and-center as the
             // cards clear, instead of fading to a residual ghost.

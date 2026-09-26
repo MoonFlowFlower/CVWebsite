@@ -4,6 +4,49 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Fourth pass (2026-09-26): scroll dynamics vs reference video
+
+Method: `ffmpeg` contact sheets of `Task/参考视频.mp4` (fps=2) vs
+`scripts/capture-scroll-sweep.mjs` (32 evenly spaced free-scroll frames of the
+live Pages site) and `scripts/capture-dev-shots.mjs` (named/debug URLs on the
+dev server, prints card screen bounds as viewport ratios).
+
+- **Works cards:** posters were low-res crops (DISCOAT was a 170x500 sliver
+  stretched full-screen). DISCOAT / WEAR GO LAND / KizunaAI posters are now
+  perspective-rectified 1280px crops from video 11.1s / 滚动stage8 /
+  滚动stage6. Lead card scale 1.38 -> 0.84, yOffset -0.2, bendRadius
+  3.1 -> 6.2: lead now spans ~22-77% x 20-82% (reference 26-77% x 22-79%).
+  Poster shader: dropped full-height white streak bars and the wide rainbow
+  frame; now slight RGB split + thin glossy rim + soft glint.
+  Exit pose re-solved for the flatter bend (angle -1.3, radiusOffset 1.8) so
+  card A is fully offscreen in cards-settled at 1440x1080 and 2560x1600.
+- **kv -> works entry:** new `kv.wallZebra` channel. works_intro: crystal
+  half-turn about Y (edge-on at midpoint, X/Z wobble, scale bump 1.42), wall
+  crossfades violet haze -> greyscale warped zebra LED bands, crystal tint
+  follows (`uVioletMix`, violet -> silver), MOONFLOW greys out before fading.
+  works: crystal stays fully visible upright over the zebra wall until the
+  first card arrives. Leaving the half turn wraps rotation.y by pi (the frame
+  is half-turn symmetric) instead of spinning back; kv depth squash now folds
+  yaw by pi as well.
+- **WORKS wall word:** fillOpacity 0.9 -> 0.28 (linear alpha; old value read
+  near-white), card-phase ghost effective alpha ~0.025.
+- **Validator updates (intentional, reference-backed):** leadCenter
+  centerYRatio 0.26-0.48 -> 0.3-0.58 (reference centre ~0.50); worksOpacity
+  expectations scaled x0.31 to the new fillOpacity.
+- **Known pre-existing failure:** `--cards-only` now passes every fixed-state
+  and wide-viewport check, then stops at `assertPrismRefractionPerf
+  (cards-a-center)`, which expects prism opacity >= 0.08 during works_cards.
+  HEAD c06caba already hides the prism there ("no crystal while cards
+  cycle"), so this guard failed before this pass too. Reference video 11.1s
+  actually shows a grey crystal slab beside/behind the cards; resolving this
+  needs a z-order decision (prism currently sits in front of the card arc).
+- Still open: vision dead zone (sweep frames 19-23 are empty light grey where
+  the reference has the rainbow slab + VISION copy), service/stellla are flat
+  DOM vs reference 3D wall panels, wall does not echo the lead poster colours
+  during works_cards (reference shows a blurred colour wash).
+- Dev trap reminder: `npm run build` while `npm run dev` is running corrupts
+  `.next` (every JS chunk 404s, no canvas). Stop dev, `rm -rf .next`, restart.
+
 ## Third pass (2026-09-26): kv frame parity vs `Task/滚动前.png`
 
 - **Wall grey root cause:** the dark palette values are linear and
