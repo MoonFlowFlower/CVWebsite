@@ -64,7 +64,7 @@
 .endmarkOverlay {
   position: absolute;
   inset: 0;
-  z-index: 9;
+  z-index: 11;
   pointer-events: none;
   overflow: hidden;
 
@@ -112,9 +112,27 @@
 
   &[data-visible="true"] {
     visibility: visible;
+    pointer-events: auto;
     transition:
       opacity 80ms linear,
       transform 140ms ease-out;
+  }
+}
+
+.endmarkFooterLink {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  color: rgba(255, 255, 255, 0.58);
+  text-decoration: none;
+  text-align: left;
+
+  &:hover,
+  &:focus-visible {
+    color: #fff;
   }
 }
 
@@ -216,6 +234,21 @@
   box-shadow:
     0 -20px 60px rgba(255, 255, 255, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.58);
+
+  /* Reference mission_in: the dark scene bulges down into the rising paper in a
+     soft concave arc; the bulge collapses as the panel settles. */
+  &::before {
+    content: "";
+    position: absolute;
+    left: -22%;
+    right: -22%;
+    top: calc((1 - var(--alche-mission-panel-progress, 0)) * -16vh);
+    height: calc((1 - var(--alche-mission-panel-progress, 0)) * 36vh);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(3, 3, 8, 0.97), rgba(3, 3, 8, 0.82) 68%, transparent);
+    filter: blur(14px);
+    pointer-events: none;
+  }
 }
 
 .loadingOverlay {
@@ -287,9 +320,9 @@
 .header {
   position: absolute;
   inset: 1.35rem 1.4rem auto 1.4rem;
-  z-index: 10;
+  z-index: 12;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 1.2rem;
 }
@@ -309,12 +342,68 @@
   pointer-events: none;
 }
 
-.headerBrandWord,
+/* Light-section theme: dark ink header + indicator over paper backgrounds. */
+.root[data-shell-theme="light"] {
+  .headerBrand,
+  .headerNavButton,
+  .scrollIndicatorLabel {
+    color: #14181e;
+  }
+
+  .headerNavButton {
+    color: rgba(20, 24, 30, 0.6);
+  }
+
+  .headerNavButtonActive {
+    color: #14181e;
+  }
+
+  .headerNavButtonActive::after {
+    background: rgba(20, 24, 30, 0.85);
+  }
+
+  .headerAction,
+  .localeSelect {
+    border-color: rgba(20, 24, 30, 0.3);
+    background: rgba(255, 255, 255, 0.55);
+    color: #14181e;
+  }
+
+  .soundToggle span {
+    background: rgba(20, 24, 30, 0.8);
+  }
+
+  .menuToggle span {
+    background: rgba(20, 24, 30, 0.8);
+  }
+
+  .scrollIndicatorLine {
+    background: rgba(20, 24, 30, 0.42);
+  }
+
+  .scrollIndicatorSub span {
+    border-color: rgba(20, 24, 30, 0.32);
+  }
+
+  .scrollIndicatorSubActive span {
+    border-color: rgba(20, 24, 30, 0.9);
+    background: rgba(20, 24, 30, 0.9);
+  }
+}
+
 .footerWordmark,
 .stelllaWord {
   font-size: clamp(2rem, 5vw, 3.4rem);
   line-height: 0.9;
   letter-spacing: -0.045em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.headerBrandWord {
+  font-size: clamp(1.2rem, 1.9vw, 1.62rem);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -409,6 +498,348 @@
   }
 }
 
+.lateBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #030308;
+  opacity: 0;
+  transition: background 620ms ease;
+  pointer-events: none;
+}
+
+.lateBackdrop[data-stellla="true"] {
+  /* Reference stellla: black stage with a faint engineering grid + cross ticks. */
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 130px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 130px),
+    #050507;
+}
+
+.serviceOverlay,
+.stelllaOverlay {
+  position: absolute;
+  z-index: 10;
+  opacity: 0;
+  transform: translateY(1rem);
+  transition: opacity 420ms ease, transform 520ms ease;
+  pointer-events: none;
+}
+
+.serviceOverlay[data-visible="true"],
+.stelllaOverlay[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.serviceOverlay {
+  left: clamp(2rem, 9vw, 9rem);
+  right: clamp(2rem, 9vw, 9rem);
+  top: 18%;
+  display: grid;
+  gap: 1rem;
+}
+
+.serviceOverlayEyebrow {
+  margin: 0;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.serviceOverlayTitle {
+  margin: 0;
+  max-width: 34rem;
+  font-size: clamp(1.4rem, 2.4vw, 2.1rem);
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.serviceOverlayItems {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.2rem;
+  margin-top: 1.6rem;
+}
+
+.serviceOverlayItem {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.2rem 1.3rem 1.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 12, 18, 0.55);
+
+  h4 {
+    margin: 0;
+    font-size: 1.28rem;
+    line-height: 1.14;
+    color: #fff;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.72);
+  }
+}
+
+.serviceOverlayItemCode {
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.stelllaOverlay {
+  left: clamp(2rem, 9vw, 9rem);
+  right: clamp(2rem, 6vw, 6rem);
+  top: 18%;
+  bottom: 14%;
+  max-width: none;
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: clamp(1.4rem, 3.5vw, 3.2rem);
+}
+
+.stelllaOverlay .serviceOverlayEyebrow {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.stelllaOverlayWord {
+  position: relative;
+  margin: 0;
+  font-size: clamp(4.2rem, 11vw, 9rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.stelllaOverlayWord::after {
+  /* four-point star accent over the wordmark (reference sparkle) */
+  content: "✦";
+  position: absolute;
+  top: -0.32em;
+  margin-left: 0.06em;
+  font-size: 0.42em;
+  font-weight: 400;
+  color: #ffffff;
+}
+
+.stelllaOverlayTitle {
+  margin: 0.9rem 0 0;
+  max-width: 42rem;
+  font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.stelllaOverlayBody {
+  margin: 0.4rem 0 0;
+  max-width: 38rem;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.55);
+  justify-self: end;
+  align-self: end;
+  text-align: left;
+  max-width: 22rem;
+}
+
+.sectionCopy {
+  position: absolute;
+  z-index: 8;
+  display: grid;
+  gap: 0.85rem;
+  max-width: min(46rem, calc(100vw - 6rem));
+  opacity: 0;
+  transform: translateY(0.8rem);
+  transition: opacity 380ms ease, transform 460ms ease;
+  pointer-events: none;
+}
+
+.sectionCopy[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.missionCopy {
+  left: clamp(2rem, 9vw, 9rem);
+  top: 34%;
+}
+
+.visionCopy {
+  right: clamp(2rem, 8vw, 8rem);
+  top: 36%;
+  justify-items: end;
+  text-align: right;
+  max-width: min(26rem, calc(100vw - 6rem));
+}
+
+.sectionCopyLines {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.missionCopy .sectionCopyLines {
+  justify-items: start;
+}
+
+.visionCopy .sectionCopyLines {
+  justify-items: end;
+}
+
+.sectionCopyLine {
+  display: inline-block;
+  padding: 0.34rem 0.7rem;
+  background: #08090c;
+  color: #fdfdff;
+  font-size: clamp(1.3rem, 2.6vw, 2.3rem);
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: 0.02em;
+}
+
+.sectionCopyCaption {
+  margin: 1.1rem 0 0;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  color: rgba(20, 24, 30, 0.62);
+  white-space: pre-line;
+}
+
+.sectionCopyWatermark {
+  position: absolute;
+  top: -3.6rem;
+  left: 0;
+  margin: 0;
+  font-size: clamp(3.2rem, 7vw, 6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(30, 34, 42, 0.3);
+}
+
+.visionCopy .sectionCopyWatermark {
+  left: auto;
+  right: 0;
+}
+
+.menuToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0.4rem 0.3rem;
+
+  span {
+    display: block;
+    width: 2px;
+    height: 1.05rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+  }
+}
+
+.worksCardCaption {
+  position: absolute;
+  left: clamp(1.6rem, 6vw, 6.4rem);
+  bottom: clamp(3.4rem, 9vh, 6.8rem);
+  z-index: 8;
+  display: grid;
+  gap: 0.5rem;
+  max-width: min(30rem, calc(100vw - 4rem));
+  opacity: 0;
+  transform: translateY(0.6rem);
+  transition: opacity 320ms ease, transform 380ms ease;
+  pointer-events: none;
+}
+
+.worksCardCaption[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.worksCardCaptionDate {
+  margin: 0;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.86rem;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.worksCardCaptionTitle {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.6vw, 2.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.worksCardCaptionSubtitle {
+  margin: 0;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.worksCardCaptionTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.worksCardCaptionTags li {
+  padding: 0.28rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.worksMoreLink {
+  position: absolute;
+  right: clamp(1.6rem, 4vw, 3.6rem);
+  bottom: clamp(3.2rem, 8vh, 5.6rem);
+  z-index: 8;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.92rem;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+
+.worksMoreLink[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .localeField {
   display: inline-flex;
 }
@@ -423,7 +854,7 @@
   position: absolute;
   top: 50%;
   left: 1.4rem;
-  z-index: 9;
+  z-index: 12;
   display: grid;
   gap: 0.9rem;
   transform: translateY(-50%);
@@ -493,7 +924,14 @@
   right: 1.45rem;
   z-index: 8;
   width: min(18rem, calc(100vw - 3rem));
-  transition: opacity 220ms ease;
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+
+.newsRail[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .newsTitle,
@@ -531,7 +969,7 @@
   font-family: "IBM Plex Mono", "Courier New", monospace;
   font-size: 0.72rem;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(255, 255, 255, 0.64);
 }
 
 .newsLink {
@@ -887,18 +1325,17 @@
 }
 
 @media (max-width: 1024px) {
+  /* Reference keeps logo / centered nav / actions on one row at tablet-landscape widths. */
   .header {
-    grid-template-columns: 1fr;
-    justify-items: start;
+    gap: 0.8rem;
   }
 
   .headerNav {
-    flex-wrap: wrap;
-    justify-content: flex-start;
+    gap: 1rem;
   }
 
   .headerRight {
-    justify-self: start;
+    gap: 0.55rem;
   }
 
   .newsRail,
@@ -947,10 +1384,18 @@
 @media (max-width: 768px) {
   .header {
     inset: 1rem 1rem auto 1rem;
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
 
   .headerNav {
     gap: 0.9rem;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .headerRight {
+    justify-self: start;
   }
 
   .headerAction,

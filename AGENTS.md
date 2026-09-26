@@ -8,6 +8,7 @@
 - 部署目标：GitHub Pages，子路径 `/CVWebsite/`
 - 当前运行模式：`kv-works`
 - 参考 authority：`Task/参考视频.mp4` -> `data/alche-works-shotbook.json` -> 新鲜本地/远端截图
+- 2026-07-13 起：kv->works 段切换为参考准确的暗色 LED 方向;service/stellla/outro 已并入滚动轨道(shell DOM 实现);最新 handoff 见 `docs/handoff/alche-top-page-handoff-2026-07-13.md`
 - 支持语言：`en`、`zh-CN`、`ja`、`ko`
 
 ## 技术栈

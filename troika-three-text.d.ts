@@ -12,6 +12,10 @@ declare module "troika-three-text" {
     letterSpacing: number;
     color: THREE.ColorRepresentation;
     fillOpacity: number;
+    outlineWidth: number | string;
+    outlineColor: THREE.ColorRepresentation;
+    outlineOpacity: number;
+    outlineBlur: number | string;
     textRenderInfo?: {
       blockBounds?: [number, number, number, number];
     };

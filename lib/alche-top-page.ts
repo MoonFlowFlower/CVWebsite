@@ -40,6 +40,10 @@ export const ALCHE_TOP_SCROLL_TRACK_SECTIONS: readonly AlcheScrollableSectionId[
   ...ALCHE_TOP_RENDERABLE_SECTIONS,
   "mission",
   "vision",
+  "vision_out",
+  "service_in",
+  "service",
+  "stellla",
   "outro",
 ];
 
@@ -329,10 +333,12 @@ export const ALCHE_TOP_MOONFLOW = {
   y: 0.18,
   depthMix: 0.5,
   zOffset: -0.48,
-  widthRatio: 0.46,
+  widthRatio: 0.8,
   fontPath: "/fonts/space-grotesk-500.woff",
-  letterSpacing: -0.035,
+  letterSpacing: 0.012,
   baseFontSize: 1,
+  // SDF outline (fraction of font size) used as faux-bold.
+  strokeBoldWidth: 0.022,
 } as const;
 
 export const ALCHE_TOP_WALL_WORD = {
@@ -341,6 +347,8 @@ export const ALCHE_TOP_WALL_WORD = {
   fontPath: "/fonts/space-grotesk-500.woff",
   fontSize: 2.68,
   fillOpacity: 0.9,
+  // Dim ghost read of the word behind the flying cards (reference behavior).
+  ghostOpacity: 0.12,
   wallInset: 0.0,
   worldZ: -4.9,
   surfaceOffset: 0.0,
@@ -355,15 +363,25 @@ export const ALCHE_TOP_WALL_WORD = {
 } as const;
 
 export const ALCHE_TOP_WORKS_CARDS = {
-  width: 2.6,
-  height: 1.55,
-  bendRadius: 6,
+  // Reference cards read near full-viewport with a strong cloth-like bulge.
+  width: 3.35,
+  height: 1.9,
+  bendRadius: 3.1,
   segments: 80,
   groupY: 0.22,
   groupZ: -4.15,
   arcCenterX: 0,
   arcCenterZ: 2.2,
   baseRadius: 2.48,
+  // Rolling queue: cycle 0 keeps the original shotbook axis [0,1] untouched
+  // (validator-pinned states stay identical); each extra unit of
+  // worksCardsProgress plays one more queue->lead handoff cycle.
+  queueCount: 4,
+  cyclesTotal: 3,
+  // The lead holds center until the crossover starts, then the handoff is
+  // quick so the center never sits empty (reference pacing).
+  extraCycleQueueEnd: 0.45,
+  extraCycleLeadEnd: 0.8,
 } as const;
 
 export const ALCHE_TOP_CENTER_MODEL = {
@@ -371,11 +389,15 @@ export const ALCHE_TOP_CENTER_MODEL = {
   y: 0.08,
   depthMix: 0.5,
   depthOffset: 0.38,
-  targetHeight: 1.84,
+  targetHeight: 2.3,
+  // Front-facing depth multiplier (restored to 1 through the mission turn).
+  kvDepthScale: 0.55,
   rainbowFaceNormal: [0.866025, 0.5, 0] as const,
   baseRotationX: 0,
   baseRotationY: 0.002754,
-  baseRotationZ: Math.PI,
+  // Reference kv crystal points up (apex at top); the GLB is authored apex-up,
+  // so no Z flip. (Was Math.PI during the inverted-triangle phase.)
+  baseRotationZ: 0,
   missionTurnRadians: 1.57,
   missionTurnStartOffset: 0,
   coverScale: 6.2,
@@ -401,7 +423,7 @@ export const ALCHE_TOP_SECTIONS: readonly AlcheTopSectionDefinition[] = [
   { id: "kv", label: "kv", groupId: "top", snapRatio: 1, minHeight: sectionHeight(1) },
   { id: "works_intro", label: "works_intro", groupId: "top", snapRatio: 1, minHeight: sectionHeight(1) },
   { id: "works", label: "works", groupId: "works", snapRatio: 1, minHeight: sectionHeight(1.35) },
-  { id: "works_cards", label: "works_cards", groupId: "works", snapRatio: 1, minHeight: sectionHeight(1.18) },
+  { id: "works_cards", label: "works_cards", groupId: "works", snapRatio: 1, minHeight: sectionHeight(2.8) },
   { id: "works_outro", label: "works_outro", groupId: "works", snapRatio: 1.5, minHeight: sectionHeight(1.5) },
   { id: "mission_in", label: "mission_in", groupId: "about", snapRatio: 1, minHeight: sectionHeight(1) },
   { id: "mission", label: "mission", groupId: "about", snapRatio: 1, minHeight: sectionHeight(1.05) },
@@ -847,7 +869,8 @@ export function deriveTopSceneState(
 ): AlcheTopSceneState {
   const runtimeSection = normalizeTopRuntimeSection(activeSection);
   const progress = clamp01(sectionProgress);
-  const cardsProgress = clamp01(worksCardsProgress);
+  // Cards axis spans [0, cyclesTotal]; [0,1] is the legacy single-pair cycle.
+  const cardsProgress = Math.min(Math.max(worksCardsProgress, 0), ALCHE_TOP_WORKS_CARDS.cyclesTotal);
   const worksIntro: AlcheWorksIntroSceneState =
     runtimeSection === "works_intro"
       ? deriveWorksIntroSceneState(progress)
@@ -960,11 +983,21 @@ export function deriveTopSceneState(
       runtimeSection === "works"
         ? 0.28 * (1 - works.cardMix * 0.68)
         : runtimeSection === "works_outro"
-          ? 0.14 * worksOutro.residualMix
+          ? // Reference works_outro: the glass A returns front-and-center as the
+            // cards clear, instead of fading to a residual ghost.
+            Math.min(1, 0.2 + worksOutro.clearMix * 0.8)
           : 1;
+    if (runtimeSection === "works_outro") {
+      kv.prismGroupScale = 1 + worksOutro.clearMix * 0.38;
+    }
     kv.wallFlatten = runtimeSection === "works_outro" ? worksOutroWallFlatten : runtimeSection === "mission_in" ? missionInWallFlatten : 0;
     kv.wallWhiteMix = runtimeSection === "mission_in" ? missionIn.whiteMix * 0.86 : 0;
     kv.visible = runtimeSection === "mission_in" ? 1 - missionIn.whiteMix * 0.64 : 1;
+  }
+
+  if (runtimeSection === "works_cards") {
+    // Reference: no crystal while the poster cards cycle.
+    kv.prismVisibility = 0.04;
   }
 
   if (runtimeSection === "mission" || runtimeSection === "vision" || runtimeSection === "vision_out" || runtimeSection === "service_in" || runtimeSection === "service" || runtimeSection === "stellla" || runtimeSection === "outro") {

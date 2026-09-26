@@ -230,7 +230,7 @@ const expectedShotStates = {
     mode: "single-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.05 },
+    worksOpacity: { min: 0.08, max: 0.26 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -242,7 +242,7 @@ const expectedShotStates = {
     mode: "single-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.05 },
+    worksOpacity: { min: 0.08, max: 0.26 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -254,7 +254,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.05 },
+    worksOpacity: { min: 0.08, max: 0.26 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 0,
@@ -267,7 +267,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.05 },
+    worksOpacity: { min: 0.08, max: 0.26 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     card0Visible: true,
@@ -279,7 +279,7 @@ const expectedShotStates = {
     mode: "dual-card-state",
     camera: kvLockedCamera,
     cameraTolerance: 0.08,
-    worksOpacity: { max: 0.05 },
+    worksOpacity: { min: 0.08, max: 0.26 },
     cardsOpacity: { min: 0.98, max: 1.01 },
     moonflowOpacity: { max: 0.02 },
     cardsLeadIndex: 1,
@@ -655,9 +655,12 @@ async function closeBrowserIfOpen(browser) {
 }
 
 async function launchValidationBrowser() {
+  // Legacy "--use-gl=swiftshader" was removed from modern Chromium and breaks
+  // WebGL context creation in headless mode (no canvas ever mounts). Rely on
+  // Playwright defaults and keep the software fallback explicitly enabled.
   return chromium.launch({
     headless: true,
-    args: ["--disable-dev-shm-usage", "--use-gl=swiftshader", "--disable-gpu-sandbox"],
+    args: ["--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--disable-gpu-sandbox"],
   });
 }
 
@@ -765,6 +768,9 @@ async function assertMissionGridPanelBackground(page, label) {
 }
 
 async function assertTopPageShell(page, scenarioName) {
+  // The canvas mounts client-side (dynamic import after hydration); wait for it
+  // instead of racing "networkidle".
+  await page.waitForSelector("canvas", { state: "attached", timeout: 20000 }).catch(() => {});
   assert((await page.locator("canvas").count()) >= 1, `Expected at least one canvas for ${scenarioName}`);
   assert((await page.locator("body").textContent())?.includes("MOONFLOW"), `Missing MOONFLOW branding for ${scenarioName}`);
 

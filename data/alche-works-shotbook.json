@@ -4,31 +4,31 @@
       "angle": -0.04,
       "radiusOffset": 0.08,
       "yOffset": -0.02,
-      "scale": 0.82
+      "scale": 1.38
     },
     "queue-right-lower-offscreen": {
       "angle": 0.94,
       "radiusOffset": 0.72,
       "yOffset": -0.98,
-      "scale": 0.82
+      "scale": 0.92
     },
     "queue-right-lower": {
       "angle": 0.7,
       "radiusOffset": 0.5,
       "yOffset": -0.64,
-      "scale": 0.82
+      "scale": 0.92
     },
     "support-left-upper": {
       "angle": -0.74,
       "radiusOffset": 0.5,
       "yOffset": 0.22,
-      "scale": 0.82
+      "scale": 1.38
     },
     "exit-left-offscreen": {
       "angle": -1.2,
       "radiusOffset": 0.88,
       "yOffset": 0.24,
-      "scale": 0.82
+      "scale": 1.38
     }
   },
   "shots": [
@@ -64,7 +64,7 @@
       },
       "reference": {
         "videoTime": 9.05,
-        "taskStillPath": "Task/滚动效果/首页滚动至work/滚动stage5.png"
+        "taskStillPath": "Task/\u6eda\u52a8\u6548\u679c/\u9996\u9875\u6eda\u52a8\u81f3work/\u6eda\u52a8stage5.png"
       }
     },
     {
@@ -82,7 +82,7 @@
       },
       "reference": {
         "videoTime": 9.55,
-        "taskStillPath": "Task/滚动效果/首页滚动至work/滚动stage6.png"
+        "taskStillPath": "Task/\u6eda\u52a8\u6548\u679c/\u9996\u9875\u6eda\u52a8\u81f3work/\u6eda\u52a8stage6.png"
       }
     },
     {
@@ -100,7 +100,7 @@
       },
       "reference": {
         "videoTime": 10.05,
-        "taskStillPath": "Task/滚动效果/首页滚动至work/滚动stage7.png"
+        "taskStillPath": "Task/\u6eda\u52a8\u6548\u679c/\u9996\u9875\u6eda\u52a8\u81f3work/\u6eda\u52a8stage7.png"
       }
     },
     {
@@ -135,7 +135,7 @@
       },
       "reference": {
         "videoTime": 10.58,
-        "taskStillPath": "Task/滚动效果/首页滚动至work/滚动stage8.png"
+        "taskStillPath": "Task/\u6eda\u52a8\u6548\u679c/\u9996\u9875\u6eda\u52a8\u81f3work/\u6eda\u52a8stage8.png"
       }
     },
     {

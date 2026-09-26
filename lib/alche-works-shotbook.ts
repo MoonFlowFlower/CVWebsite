@@ -98,18 +98,17 @@ export function readAlcheWorksCardDebugMode(value: string | null | undefined): A
   return ALCHE_WORKS_CARD_DEBUG_MODES.find((mode) => mode === value) ?? null;
 }
 
-function isIdentityDefaultHost(hostname: string | null | undefined) {
-  return hostname === "localhost" || hostname === "127.0.0.1" || Boolean(hostname?.endsWith(".github.io"));
-}
-
 export function getDefaultAlcheWorksCardDebugMode(
   params: Pick<URLSearchParams, "get"> | null,
-  hostname?: string | null,
+  _hostname?: string | null,
 ): AlcheWorksCardDebugMode {
+  // Posters are the reference-accurate default everywhere (including localhost
+  // and GitHub Pages); identity letters stay available for capture/validator
+  // URLs and via alcheCardDebug=identity.
   if (!params) return "poster";
   const captureMode = params.get("alcheCapture") === "1";
   const shotId = readAlcheWorksShotId(params.get("alcheShot"));
-  return captureMode || shotId || isIdentityDefaultHost(hostname) ? "identity" : "poster";
+  return captureMode || shotId ? "identity" : "poster";
 }
 
 export function resolveAlcheWorksCardDebugMode(
@@ -160,32 +159,38 @@ export function getCompensatedAlcheWorksCardPoseDefinition(
   if (poseId === "support-left-upper") {
     return {
       ...pose,
-      angle: pose.angle + lerp(0, -0.3, compensation),
-      radiusOffset: pose.radiusOffset + lerp(0, 0.24, compensation),
+      // Keep the support card's facing shallow on wide displays; the previous
+      // -0.3 swing turned it into a near-edge-on sliver (reference reads
+      // roughly 35-40 degrees).
+      angle: pose.angle + lerp(0, -0.14, compensation),
+      radiusOffset: pose.radiusOffset + lerp(0, 0.18, compensation),
     };
   }
 
   if (poseId === "exit-left-offscreen") {
     return {
       ...pose,
-      angle: pose.angle + lerp(0, -0.3, compensation),
-      radiusOffset: pose.radiusOffset + lerp(0, 0.24, compensation),
+      angle: pose.angle + lerp(0, -0.16, compensation),
+      radiusOffset: pose.radiusOffset + lerp(0, 0.18, compensation),
     };
   }
 
   if (poseId === "queue-right-lower") {
     return {
       ...pose,
-      angle: pose.angle + lerp(0, 0.12, compensation),
-      radiusOffset: pose.radiusOffset + lerp(0, 0.1, compensation),
+      // Wider viewports push the queue card further toward the right edge so
+      // it keeps the reference "half offscreen" read instead of floating
+      // inboard on 16:9+ displays.
+      angle: pose.angle + lerp(0, 0.2, compensation),
+      radiusOffset: pose.radiusOffset + lerp(0, 0.12, compensation),
     };
   }
 
   if (poseId === "queue-right-lower-offscreen") {
     return {
       ...pose,
-      angle: pose.angle + lerp(0, 0.14, compensation),
-      radiusOffset: pose.radiusOffset + lerp(0, 0.1, compensation),
+      angle: pose.angle + lerp(0, 0.24, compensation),
+      radiusOffset: pose.radiusOffset + lerp(0, 0.12, compensation),
     };
   }
 

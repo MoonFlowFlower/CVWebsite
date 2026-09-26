@@ -157,7 +157,7 @@ const sharedWorks = [
     title: "Matsuken Samba II Rise Up the World",
     subtitle: "Mass live activation / performance world",
     categories: ["fortnite", "live", "brand world"],
-    imageSrc: "/alche-top-page/works/wear-go-land-side-poster.png",
+    imageSrc: "/alche-top-page/works/matsuken-samba-poster.png",
   },
 ] as const;
 
@@ -183,7 +183,7 @@ const sharedEndmarkFooter = {
   columns: [
     { title: "Top", items: ["News", "Works"] },
     { title: "About", items: ["stellla", "Contact"] },
-    { title: "Links ▼", items: ["TECH BLOG", "note", "X", "YouTube"] },
+    { title: "Links ▼", items: ["GitHub", "Email"] },
   ],
   actions: ["Contact ↗", "Recruit ↗"],
   legalLinks: ["Privacy Policy", "License"],

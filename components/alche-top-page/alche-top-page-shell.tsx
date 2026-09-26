@@ -14,11 +14,13 @@ import {
 import { alcheTopPageCopy } from "@/data/alche-top-page";
 import type { ContactLink, StudioDossierAsset } from "@/data/profile";
 import {
+  ALCHE_TOP_GROUP_IDS,
   ALCHE_TOP_MISSION_PANEL_LAYOUT,
   type AlchePointerDebugState,
   ALCHE_TOP_SCROLL_TRACK_SECTIONS,
   ALCHE_TOP_SECTION_IDS,
   ALCHE_TOP_SECTIONS,
+  ALCHE_TOP_WORKS_CARDS,
   deriveMissionTransitionOverlayState,
   normalizeTopRuntimeSection,
   type AlcheScrollableSectionId,
@@ -27,6 +29,7 @@ import {
 import { readAlcheHeroShotId, type AlcheHeroShotId } from "@/lib/alche-hero-lock";
 import {
   ALCHE_WORKS_CAPTURE_SHOTS,
+  getAlcheWorksCardsSegment,
   getDefaultAlcheWorksCardDebugMode,
   getAdjacentAlcheWorksShotId,
   getAlcheWorksShotOverride,
@@ -186,6 +189,31 @@ function readEndmarkDebugStage(params: Pick<URLSearchParams, "get"> | null): Alc
     : null;
 }
 
+function splitCopyIntoLines(text: string, maxLines: number): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (maxLines <= 1) return [trimmed];
+
+  const hasSpaces = trimmed.includes(" ");
+  if (hasSpaces) {
+    const words = trimmed.split(/\s+/);
+    if (words.length <= maxLines) return words.length <= 1 ? [trimmed] : [trimmed];
+    const perLine = Math.ceil(words.length / maxLines);
+    const lines: string[] = [];
+    for (let index = 0; index < words.length; index += perLine) {
+      lines.push(words.slice(index, index + perLine).join(" "));
+    }
+    return lines;
+  }
+
+  const perLine = Math.ceil(trimmed.length / maxLines);
+  const lines: string[] = [];
+  for (let index = 0; index < trimmed.length; index += perLine) {
+    lines.push(trimmed.slice(index, index + perLine));
+  }
+  return lines;
+}
+
 function readEndmarkTimeScale(params: Pick<URLSearchParams, "get"> | null) {
   if (!params) return 1;
   const rawValue = params.get("alcheEndmarkTimeScale");
@@ -195,7 +223,7 @@ function readEndmarkTimeScale(params: Pick<URLSearchParams, "get"> | null) {
   return Math.min(Math.max(parsed, 0.1), 40);
 }
 
-export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
+export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) {
   const copy = alcheTopPageCopy[locale];
   const router = useRouter();
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -235,6 +263,11 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
     fillRevealWidth: 0,
   });
   const [debugOverrideVersion, setDebugOverrideVersion] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   const {
     reducedMotion,
     activeSection,
@@ -244,6 +277,9 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
     introProgress,
     missionTurnProgress,
     visionCoverProgress,
+    serviceProgress,
+    stelllaProgress,
+    outroApproachProgress,
     endmarkFooterProgress,
     heroShotId,
     worksWordHandoff,
@@ -252,20 +288,23 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
     useTopPageScroll({
       sectionRefs,
     });
-  const runtimeSearchParams = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
+  // Read window-derived state only after hydration so the first client render
+  // matches SSR output exactly. A mismatch here crashes hydration, remounts the
+  // tree, and can leave the R3F canvases holding force-lost WebGL contexts.
+  const runtimeSearchParams = hydrated ? new URLSearchParams(window.location.search) : null;
   const debugOverride = readShellDebugOverride(runtimeSearchParams);
   const endmarkDebugStage = readEndmarkDebugStage(runtimeSearchParams);
   const endmarkTimeScale = readEndmarkTimeScale(runtimeSearchParams);
   const endmarkDisabled = runtimeSearchParams?.get("alcheDisableEndmark") === "1";
   const debugUiHidden = runtimeSearchParams?.get("alcheHideDebugUi") === "1";
-  const runtimeHostname = typeof window === "undefined" ? null : window.location.hostname;
+  const runtimeHostname = hydrated ? window.location.hostname : null;
   const currentCardDebugMode = resolveAlcheWorksCardDebugMode(runtimeSearchParams, runtimeHostname);
   const currentSectionProgress = debugOverride?.progress ?? sectionProgress;
   const currentWorksCardsProgress = debugOverride ? (debugOverride.section === "works_cards" ? debugOverride.progress : 0) : worksCardsProgress;
   const currentIntroProgress = debugOverride?.intro ?? introProgress;
   const currentHeroShotId = debugOverride?.heroShotId ?? heroShotId;
   const kvWallTexturePath = assetPath("/alche-top-page/kv/hero-wall-grid-white.png");
-  const worksCardItems = copy.works.items.slice(0, 2).map((item) => ({
+  const worksCardItems = copy.works.items.slice(0, ALCHE_TOP_WORKS_CARDS.queueCount).map((item) => ({
     title: item.title,
     imageSrc: item.imageSrc,
   }));
@@ -279,7 +318,7 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
   const currentShotId = debugOverride?.shotId ?? null;
   const endmarkBlueprintPath = assetPath("/alche-top-page/endmark/alche-wordmark-blueprint.svg");
   const missionGridTexturePath = assetPath("/alche-top-page/mission/mission-grid-tile.png");
-  const endmarkTriggerActive = !endmarkDisabled && visionCoverProgress >= 0.98;
+  const endmarkTriggerActive = !endmarkDisabled && outroApproachProgress >= 0.98;
   const visibleEndmarkFooterProgress = endmarkDebugState.stage === "settled" ? endmarkFooterProgress : 0;
   const endmarkFooterVisible = visibleEndmarkFooterProgress > 0.01;
   const showShotSelector = !debugUiHidden && !captureMode && currentShotId !== null;
@@ -287,6 +326,60 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
     !debugUiHidden && !captureMode && (runtimeHostname === "localhost" || runtimeHostname === "127.0.0.1" || currentShotId !== null);
   const { missionPanelProgress } = deriveMissionTransitionOverlayState(currentActiveSection, currentSectionProgress);
   const missionPanelVisible = missionPanelProgress > 0.001;
+  const activeGroupId = ALCHE_TOP_SECTIONS.find((section) => section.id === currentTrackedSection)?.groupId ?? null;
+  const newsRailVisible = introSettled && currentActiveSection === "kv" && !endmarkFooterVisible;
+  const cardsSegment = getAlcheWorksCardsSegment(Math.min(currentWorksCardsProgress, 1));
+  const cardsCycleIndex = Math.max(
+    0,
+    Math.min(Math.floor(currentWorksCardsProgress), ALCHE_TOP_WORKS_CARDS.cyclesTotal - 1),
+  );
+  const cardsCycleU = Math.min(Math.max(currentWorksCardsProgress - cardsCycleIndex, 0), 1);
+  const cardsCaptionIndex =
+    currentWorksCardsProgress <= 1
+      ? cardsSegment.phase === "entry" || cardsSegment.phase === "queue"
+        ? 0
+        : cardsSegment.phase === "handoff" && cardsSegment.mix < 0.5
+          ? 0
+          : 1
+      : cardsCycleU >= (ALCHE_TOP_WORKS_CARDS.extraCycleQueueEnd + ALCHE_TOP_WORKS_CARDS.extraCycleLeadEnd) / 2
+        ? cardsCycleIndex + 1
+        : cardsCycleIndex;
+  const worksCaptionVisible =
+    currentActiveSection === "works_cards" && currentWorksCardsProgress > 0.055 && !endmarkFooterVisible;
+  const worksCaptionItem = copy.works.items[Math.min(cardsCaptionIndex, copy.works.items.length - 1)];
+  const worksMoreVisible = worksCaptionVisible;
+  const missionCopyVisible =
+    (currentActiveSection === "mission" || (missionPanelProgress >= 0.96 && missionTurnProgress < 0.42)) &&
+    !endmarkFooterVisible;
+  const visionCopyVisible =
+    (currentActiveSection === "vision" || missionTurnProgress > 0.72) &&
+    visionCoverProgress < 0.5 &&
+    !endmarkFooterVisible;
+  const missionTitleLines = splitCopyIntoLines(copy.mission.title, 3);
+  const visionTitleLines = splitCopyIntoLines(copy.vision.title, 2);
+  const contactHref = contacts.find((contact) => contact.key === "email")?.href || null;
+  const githubHref = contacts.find((contact) => contact.key === "github")?.href || null;
+  const footerScrollTargets: Record<string, AlcheScrollableSectionId> = {
+    Top: "kv",
+    News: "kv",
+    Works: "works",
+    stellla: "stellla",
+    Contact: "outro",
+  };
+  const footerExternalTargets: Record<string, string | null> = {
+    GitHub: githubHref,
+    Email: contactHref,
+  };
+  const servicePanelVisible = serviceProgress > 0.1 && serviceProgress < 0.97 && !endmarkFooterVisible;
+  const stelllaPanelVisible = stelllaProgress > 0.06 && outroApproachProgress < 0.5 && !endmarkFooterVisible;
+  const missionLightPhase =
+    missionPanelProgress > 0.6 && serviceProgress < 0.08 && visionCoverProgress < 0.72 && !endmarkTriggerActive;
+  // stellla is a dark stage in the reference; only the mission paper phase flips the shell light.
+  const shellTheme = missionLightPhase ? "light" : "dark";
+  const lateBackdropOpacity = Math.min(
+    1,
+    Math.max(serviceProgress > 0 ? serviceProgress * 6 : 0, 0) + (stelllaProgress > 0 ? 1 : 0),
+  );
   const setRootRef = useCallback((node: HTMLDivElement | null) => {
     stageRef.current = node;
     setCanvasEventSource(node);
@@ -398,9 +491,9 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
       loadingOverlay?.setAttribute("data-hidden", nextIntroSettled ? "true" : "false");
     };
 
-    flushSync(() => {
-      setDebugOverrideVersion((currentValue) => currentValue + 1);
-    });
+    // Plain state update: calling flushSync from inside an effect is
+    // disallowed in React 19 (dev warning) and unnecessary here.
+    setDebugOverrideVersion((currentValue) => currentValue + 1);
 
     return () => {
       delete host.__setAlcheDebugOverride;
@@ -452,6 +545,7 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
       data-endmark-footer-progress={visibleEndmarkFooterProgress.toFixed(3)}
       data-endmark-footer-visible={endmarkFooterVisible ? "true" : "false"}
       data-header-brand-hidden={endmarkFooterVisible ? "true" : "false"}
+      data-shell-theme={shellTheme}
     >
       <div className={styles.stage}>
         <div className={styles.canvasLayer}>
@@ -536,28 +630,70 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
               className={styles.endmarkFooter}
               data-endmark-footer
               data-visible={endmarkFooterVisible ? "true" : "false"}
-              aria-hidden="true"
+              aria-hidden={endmarkFooterVisible ? undefined : "true"}
             >
               <div className={styles.endmarkFooterColumns}>
                 {copy.outro.footer.columns.map((column) => (
                   <div key={column.title} className={styles.endmarkFooterColumn}>
                     <span className={styles.endmarkFooterHeading}>{column.title}</span>
-                    {column.items.map((item) => (
-                      <span key={item} className={styles.endmarkFooterItem}>
-                        {item}
-                      </span>
-                    ))}
+                    {column.items.map((item) => {
+                      const scrollTarget = footerScrollTargets[item];
+                      const externalTarget = footerExternalTargets[item];
+                      if (externalTarget) {
+                        return (
+                          <a
+                            key={item}
+                            className={`${styles.endmarkFooterItem} ${styles.endmarkFooterLink}`}
+                            href={externalTarget}
+                            target={externalTarget.startsWith("mailto:") ? undefined : "_blank"}
+                            rel="noreferrer"
+                            tabIndex={endmarkFooterVisible ? 0 : -1}
+                          >
+                            {item}
+                          </a>
+                        );
+                      }
+                      if (scrollTarget) {
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            className={`${styles.endmarkFooterItem} ${styles.endmarkFooterLink}`}
+                            onClick={() => scrollToSection(sectionRefs.current[scrollTarget])}
+                            tabIndex={endmarkFooterVisible ? 0 : -1}
+                          >
+                            {item}
+                          </button>
+                        );
+                      }
+                      return (
+                        <span key={item} className={styles.endmarkFooterItem}>
+                          {item}
+                        </span>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
 
               <div className={styles.endmarkFooterAside}>
                 <div className={styles.endmarkFooterActions}>
-                  {copy.outro.footer.actions.map((action) => (
-                    <span key={action} className={styles.endmarkFooterAction}>
-                      {action}
-                    </span>
-                  ))}
+                  {copy.outro.footer.actions.map((action) =>
+                    contactHref ? (
+                      <a
+                        key={action}
+                        className={`${styles.endmarkFooterAction} ${styles.endmarkFooterLink}`}
+                        href={contactHref}
+                        tabIndex={endmarkFooterVisible ? 0 : -1}
+                      >
+                        {action}
+                      </a>
+                    ) : (
+                      <span key={action} className={styles.endmarkFooterAction}>
+                        {action}
+                      </span>
+                    ),
+                  )}
                 </div>
                 <div className={styles.endmarkFooterLegal}>
                   {copy.outro.footer.legalLinks.map((item) => (
@@ -581,7 +717,33 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
               <span className={styles.headerBrandWord}>MOONFLOW</span>
             </button>
 
+            <nav className={styles.headerNav} aria-label={copy.header.navAria}>
+              {copy.header.navItems.map((item) => {
+                const targetSection = normalizeTopRuntimeSection(item.target) as AlcheScrollableSectionId;
+                const targetGroup = ALCHE_TOP_SECTIONS.find((section) => section.id === targetSection)?.groupId ?? null;
+                const isActive = targetGroup !== null && targetGroup === activeGroupId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`${styles.headerNavButton} ${isActive ? styles.headerNavButtonActive : ""}`}
+                    onClick={() => scrollToSection(sectionRefs.current[targetSection])}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+
             <div className={styles.headerRight}>
+              <button
+                type="button"
+                className={styles.headerAction}
+                onClick={() => scrollToSection(sectionRefs.current.outro)}
+              >
+                {copy.header.contactLabel} / {copy.header.recruitLabel}
+              </button>
+
               <button type="button" className={styles.soundToggle} aria-label={copy.header.soundLabel}>
                 <span />
                 <span />
@@ -604,6 +766,127 @@ export function AlcheTopPageShell({ locale }: AlcheTopPageShellProps) {
               </label>
             </div>
           </header>
+
+          <aside className={styles.scrollIndicator} aria-hidden="true">
+            {ALCHE_TOP_GROUP_IDS.map((groupId) => {
+              const isActive = groupId === activeGroupId;
+              return (
+                <div
+                  key={groupId}
+                  className={`${styles.scrollIndicatorGroup} ${isActive ? styles.scrollIndicatorGroupActive : ""}`}
+                >
+                  <span className={styles.scrollIndicatorMain}>
+                    <span className={styles.scrollIndicatorLine} />
+                    {isActive ? <span className={styles.scrollIndicatorLabel}>{copy.indicator.groups[groupId]}</span> : null}
+                  </span>
+                </div>
+              );
+            })}
+          </aside>
+
+          <aside className={styles.newsRail} data-visible={newsRailVisible ? "true" : "false"} aria-hidden={newsRailVisible ? undefined : "true"}>
+            <p className={styles.newsTitle}>{copy.news.title}</p>
+            <div className={styles.newsList}>
+              {copy.news.items.slice(0, 3).map((item) => (
+                <div key={item.title} className={styles.newsItem}>
+                  <p className={styles.newsDate}>{item.date}</p>
+                  <p className={styles.newsLink}>{item.title}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <div
+            className={styles.worksCardCaption}
+            data-visible={worksCaptionVisible ? "true" : "false"}
+            aria-hidden={worksCaptionVisible ? undefined : "true"}
+          >
+            <p className={styles.worksCardCaptionDate}>{worksCaptionItem.date}</p>
+            <h3 className={styles.worksCardCaptionTitle}>{worksCaptionItem.title}</h3>
+            <p className={styles.worksCardCaptionSubtitle}>{worksCaptionItem.subtitle}</p>
+            <ul className={styles.worksCardCaptionTags}>
+              {worksCaptionItem.categories.map((category) => (
+                <li key={category}>{category}</li>
+              ))}
+            </ul>
+          </div>
+
+          <button
+            type="button"
+            className={styles.worksMoreLink}
+            data-visible={worksMoreVisible ? "true" : "false"}
+            aria-hidden={worksMoreVisible ? undefined : "true"}
+            tabIndex={worksMoreVisible ? 0 : -1}
+          >
+            {copy.works.moreLabel} ↗
+          </button>
+
+          <div
+            className={`${styles.sectionCopy} ${styles.missionCopy}`}
+            data-visible={missionCopyVisible ? "true" : "false"}
+            aria-hidden={missionCopyVisible ? undefined : "true"}
+          >
+            <div className={styles.sectionCopyLines}>
+              {missionTitleLines.map((line) => (
+                <span key={line} className={styles.sectionCopyLine}>
+                  {line}
+                </span>
+              ))}
+            </div>
+            <p className={styles.sectionCopyCaption}>{copy.mission.body}</p>
+          </div>
+
+          <div
+            className={`${styles.sectionCopy} ${styles.visionCopy}`}
+            data-visible={visionCopyVisible ? "true" : "false"}
+            aria-hidden={visionCopyVisible ? undefined : "true"}
+          >
+            <p className={styles.sectionCopyWatermark}>{copy.vision.eyebrow}</p>
+            <div className={styles.sectionCopyLines}>
+              {visionTitleLines.map((line) => (
+                <span key={line} className={styles.sectionCopyLine}>
+                  {line}
+                </span>
+              ))}
+            </div>
+            <p className={styles.sectionCopyCaption}>{copy.vision.body}</p>
+          </div>
+
+          <div
+            className={styles.lateBackdrop}
+            style={{ opacity: lateBackdropOpacity }}
+            data-stellla={stelllaPanelVisible ? "true" : "false"}
+            aria-hidden="true"
+          />
+
+          <div
+            className={styles.serviceOverlay}
+            data-visible={servicePanelVisible ? "true" : "false"}
+            aria-hidden={servicePanelVisible ? undefined : "true"}
+          >
+            <p className={styles.serviceOverlayEyebrow}>{copy.service.eyebrow}</p>
+            <h3 className={styles.serviceOverlayTitle}>{copy.service.title}</h3>
+            <div className={styles.serviceOverlayItems}>
+              {copy.service.items.map((item) => (
+                <article key={item.code} className={styles.serviceOverlayItem}>
+                  <span className={styles.serviceOverlayItemCode}>{item.code}</span>
+                  <h4>{item.title}</h4>
+                  <p>{item.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className={styles.stelllaOverlay}
+            data-visible={stelllaPanelVisible ? "true" : "false"}
+            aria-hidden={stelllaPanelVisible ? undefined : "true"}
+          >
+            <p className={styles.serviceOverlayEyebrow}>{copy.stellla.frameLabel}</p>
+            <h3 className={styles.stelllaOverlayWord}>{copy.stellla.eyebrow}</h3>
+            <p className={styles.stelllaOverlayTitle}>{copy.stellla.title}</p>
+            <p className={styles.stelllaOverlayBody}>{copy.stellla.body}</p>
+          </div>
         </div>
 
         {pointerDebugEnabled ? (

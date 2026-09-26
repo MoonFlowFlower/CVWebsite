@@ -124,9 +124,10 @@ export function AlcheTopPagePostProcessing({ sceneState }: AlcheTopPagePostProce
     resolution.set(size.width, size.height);
 
     const whiteMix = Math.max(sceneState.missionIn.whiteMix, sceneState.mission.whiteMix, sceneState.vision.densityMix * 0.42);
-    bloomPass.strength = 0.02 * Math.max(sceneState.introProgress, 0.15);
-    bloomPass.radius = 0.12;
-    bloomPass.threshold = 0.99;
+    // Reference kv wordmark is crisp with only a soft halo.
+    bloomPass.strength = THREE.MathUtils.lerp(0.2, 0.04, whiteMix) * Math.max(sceneState.introProgress, 0.15);
+    bloomPass.radius = THREE.MathUtils.lerp(0.4, 0.14, whiteMix);
+    bloomPass.threshold = THREE.MathUtils.lerp(0.8, 0.97, whiteMix);
 
     finalPass.uniforms.uTime.value = state.clock.elapsedTime;
     finalPass.uniforms.uChromatic.value = 0.0;
@@ -139,3 +140,4 @@ export function AlcheTopPagePostProcessing({ sceneState }: AlcheTopPagePostProce
 
   return null;
 }
+// dark-direction pass 2026-07-13

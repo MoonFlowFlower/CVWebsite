@@ -14,6 +14,7 @@ import {
   ALCHE_TOP_SCROLL_TUNING,
   ALCHE_TOP_SECTION_IDS,
   ALCHE_TOP_TIMINGS,
+  ALCHE_TOP_WORKS_CARDS,
   clamp01,
   deriveGroupProgress,
   deriveWorksWordHandoff,
@@ -34,6 +35,9 @@ interface DebugState {
   intro: number;
   missionTurnProgress: number;
   visionCoverProgress: number;
+  serviceProgress: number;
+  stelllaProgress: number;
+  outroApproachProgress: number;
   endmarkFooterProgress: number;
   heroShotId: AlcheHeroShotId | null;
 }
@@ -97,6 +101,48 @@ function resolveDebugEndmarkFooterProgress(
   return requestedSection === "outro" ? clamp01(progress) : 0;
 }
 
+function resolveDebugServiceProgress(requestedSection: AlcheTopSectionId | null, progress: number) {
+  switch (requestedSection) {
+    case "service_in":
+      return clamp01(progress * 0.5);
+    case "service":
+      return clamp01(0.5 + progress * 0.5);
+    case "stellla":
+    case "outro":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function resolveDebugStelllaProgress(requestedSection: AlcheTopSectionId | null, progress: number) {
+  switch (requestedSection) {
+    case "stellla":
+      return clamp01(progress);
+    case "outro":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function resolveDebugOutroApproachProgress(
+  requestedSection: AlcheTopSectionId | null,
+  progress: number,
+  explicitVisionCoverProgress: number | null,
+) {
+  if (requestedSection === "outro") return 1;
+  // Legacy capture URLs assert the endmark via a fully covered vision state.
+  if (
+    explicitVisionCoverProgress !== null &&
+    Number.isFinite(explicitVisionCoverProgress) &&
+    clamp01(explicitVisionCoverProgress) >= 0.98
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
 function readDebugState(): DebugState | null {
   if (typeof window === "undefined") return null;
 
@@ -124,6 +170,13 @@ function readDebugState(): DebugState | null {
         shotOverride.progress,
         explicitVisionCoverProgress === null ? null : Number(explicitVisionCoverProgress),
       ),
+      serviceProgress: resolveDebugServiceProgress(shotOverride.section, shotOverride.progress),
+      stelllaProgress: resolveDebugStelllaProgress(shotOverride.section, shotOverride.progress),
+      outroApproachProgress: resolveDebugOutroApproachProgress(
+        shotOverride.section,
+        shotOverride.progress,
+        explicitVisionCoverProgress === null ? null : Number(explicitVisionCoverProgress),
+      ),
       endmarkFooterProgress: resolveDebugEndmarkFooterProgress(
         shotOverride.section,
         shotOverride.progress,
@@ -147,6 +200,13 @@ function readDebugState(): DebugState | null {
       explicitMissionTurnProgress === null ? null : Number(explicitMissionTurnProgress),
     ),
     visionCoverProgress: resolveDebugVisionCoverProgress(
+      requestedSection,
+      progress,
+      explicitVisionCoverProgress === null ? null : Number(explicitVisionCoverProgress),
+    ),
+    serviceProgress: resolveDebugServiceProgress(requestedSection, progress),
+    stelllaProgress: resolveDebugStelllaProgress(requestedSection, progress),
+    outroApproachProgress: resolveDebugOutroApproachProgress(
       requestedSection,
       progress,
       explicitVisionCoverProgress === null ? null : Number(explicitVisionCoverProgress),
@@ -181,7 +241,8 @@ function getWorksCardsProgress(sectionRefs: Record<AlcheScrollableSectionId, HTM
   const viewportLine = window.innerHeight * ALCHE_TOP_SCROLL_TUNING.activeViewport;
   const start = getAbsoluteTop(worksCards) - viewportLine;
   const end = worksOutro ? getAbsoluteTop(worksOutro) - viewportLine : Math.max(document.documentElement.scrollHeight - window.innerHeight, start + 1);
-  return clamp01((window.scrollY - start) / Math.max(end - start, 1));
+  // Axis spans [0, cyclesTotal]; [0,1] matches the legacy single-pair cycle.
+  return clamp01((window.scrollY - start) / Math.max(end - start, 1)) * ALCHE_TOP_WORKS_CARDS.cyclesTotal;
 }
 
 function getWorksWordHandoff(sectionRefs: Record<AlcheScrollableSectionId, HTMLElement | null>) {
@@ -228,6 +289,41 @@ function getVisionCoverProgress(sectionRefs: Record<AlcheScrollableSectionId, HT
   return clamp01((window.scrollY - start) / Math.max(end - start, 1));
 }
 
+function getSectionViewportProgress(node: HTMLElement | null) {
+  if (!node) return 0;
+
+  const viewportLine = window.innerHeight * ALCHE_TOP_SCROLL_TUNING.activeViewport;
+  const start = getAbsoluteTop(node) - viewportLine;
+  const span = Math.max(node.offsetHeight, 1);
+  return clamp01((window.scrollY - start) / span);
+}
+
+function getServiceProgress(sectionRefs: Record<AlcheScrollableSectionId, HTMLElement | null>) {
+  const serviceIn = sectionRefs.service_in;
+  const service = sectionRefs.service;
+  if (!service) return 0;
+  if (!serviceIn) return getSectionViewportProgress(service);
+
+  const viewportLine = window.innerHeight * ALCHE_TOP_SCROLL_TUNING.activeViewport;
+  const start = getAbsoluteTop(serviceIn) - viewportLine;
+  const end = Math.max(getAbsoluteTop(service) + service.offsetHeight - viewportLine, start + 1);
+  return clamp01((window.scrollY - start) / Math.max(end - start, 1));
+}
+
+function getStelllaProgress(sectionRefs: Record<AlcheScrollableSectionId, HTMLElement | null>) {
+  return getSectionViewportProgress(sectionRefs.stellla);
+}
+
+function getOutroApproachProgress(sectionRefs: Record<AlcheScrollableSectionId, HTMLElement | null>) {
+  const outro = sectionRefs.outro;
+  if (!outro) return 0;
+
+  const outroTop = getAbsoluteTop(outro);
+  const start = outroTop - window.innerHeight * 1.35;
+  const end = outroTop - window.innerHeight * 0.92;
+  return clamp01((window.scrollY - start) / Math.max(end - start, 1));
+}
+
 function getEndmarkFooterProgress(sectionRefs: Record<AlcheScrollableSectionId, HTMLElement | null>) {
   const outro = sectionRefs.outro;
   if (!outro) return 0;
@@ -258,45 +354,43 @@ function findSectionAtViewport(sectionRefs: Record<AlcheScrollableSectionId, HTM
 
 export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
   const reducedMotion = useReducedMotion();
-  const debugState = typeof window === "undefined" ? null : readDebugState();
   const lenisRef = useRef<Lenis | null>(null);
-  const trackedSectionRef = useRef<AlcheScrollableSectionId>(debugState?.section === "loading" ? "kv" : (debugState?.section ?? "kv"));
-  const introRef = useRef(debugState?.intro ?? (reducedMotion ? 1 : 0));
-  const worksCardsProgressRef = useRef(debugState?.section === "works_cards" ? debugState.progress : 0);
+  const trackedSectionRef = useRef<AlcheScrollableSectionId>("kv");
+  const introRef = useRef(reducedMotion ? 1 : 0);
+  const worksCardsProgressRef = useRef(0);
   const progressRef = useRef<Record<AlcheScrollableSectionId, number>>(
-    Object.fromEntries(
-      ALCHE_SCROLLABLE_SECTION_IDS.map((sectionId) => [sectionId, debugState?.section === sectionId ? debugState.progress : 0]),
-    ) as Record<AlcheScrollableSectionId, number>,
+    Object.fromEntries(ALCHE_SCROLLABLE_SECTION_IDS.map((sectionId) => [sectionId, 0])) as Record<
+      AlcheScrollableSectionId,
+      number
+    >,
   );
 
-  const [activeSection, setActiveSection] = useState<AlcheTopSectionId>(debugState?.section ?? "loading");
-  const [trackedSection, setTrackedSection] = useState<AlcheScrollableSectionId>(
-    debugState?.section === "loading" ? "kv" : (debugState?.section ?? "kv"),
-  );
-  const [sectionProgress, setSectionProgress] = useState(debugState?.progress ?? 0);
-  const [worksCardsProgress, setWorksCardsProgress] = useState(debugState?.section === "works_cards" ? debugState.progress : 0);
-  const [introProgress, setIntroProgress] = useState(debugState?.intro ?? (reducedMotion ? 1 : 0));
-  const [missionTurnProgress, setMissionTurnProgress] = useState(debugState?.missionTurnProgress ?? 0);
-  const [visionCoverProgress, setVisionCoverProgress] = useState(debugState?.visionCoverProgress ?? 0);
-  const [endmarkFooterProgress, setEndmarkFooterProgress] = useState(debugState?.endmarkFooterProgress ?? 0);
-  const [heroShotId, setHeroShotId] = useState<AlcheHeroShotId | null>(debugState?.heroShotId ?? null);
-  const [worksWordHandoff, setWorksWordHandoff] = useState(debugState ? deriveWorksWordHandoff(debugState.section, debugState.progress) : 0);
-  const renderDebugState = typeof window === "undefined" ? null : readDebugState();
-  const resolvedTrackedSection =
-    renderDebugState?.section === "loading"
-      ? "kv"
-      : ((renderDebugState?.section as AlcheScrollableSectionId | undefined) ?? trackedSection);
-  const resolvedActiveSection = renderDebugState?.section ?? activeSection;
-  const resolvedSectionProgress = renderDebugState?.progress ?? sectionProgress;
-  const resolvedWorksCardsProgress =
-    renderDebugState?.section === "works_cards" ? renderDebugState.progress : worksCardsProgress;
-  const resolvedIntroProgress = renderDebugState?.intro ?? introProgress;
-  const resolvedMissionTurnProgress = renderDebugState?.missionTurnProgress ?? missionTurnProgress;
-  const resolvedVisionCoverProgress = renderDebugState?.visionCoverProgress ?? visionCoverProgress;
-  const resolvedEndmarkFooterProgress = renderDebugState?.endmarkFooterProgress ?? endmarkFooterProgress;
-  const resolvedHeroShotId = renderDebugState?.heroShotId ?? heroShotId;
-  const resolvedWorksWordHandoff =
-    renderDebugState ? deriveWorksWordHandoff(renderDebugState.section, renderDebugState.progress) : worksWordHandoff;
+  // Initial state must match the SSR render exactly; URL debug overrides are
+  // applied in the mount effect below. Reading query params during render
+  // caused hydration attribute mismatches that React never patches up.
+  const [activeSection, setActiveSection] = useState<AlcheTopSectionId>("loading");
+  const [trackedSection, setTrackedSection] = useState<AlcheScrollableSectionId>("kv");
+  const [sectionProgress, setSectionProgress] = useState(0);
+  const [worksCardsProgress, setWorksCardsProgress] = useState(0);
+  const [introProgress, setIntroProgress] = useState(reducedMotion ? 1 : 0);
+  const [missionTurnProgress, setMissionTurnProgress] = useState(0);
+  const [visionCoverProgress, setVisionCoverProgress] = useState(0);
+  const [serviceProgress, setServiceProgress] = useState(0);
+  const [stelllaProgress, setStelllaProgress] = useState(0);
+  const [outroApproachProgress, setOutroApproachProgress] = useState(0);
+  const [endmarkFooterProgress, setEndmarkFooterProgress] = useState(0);
+  const [heroShotId, setHeroShotId] = useState<AlcheHeroShotId | null>(null);
+  const [worksWordHandoff, setWorksWordHandoff] = useState(0);
+  const resolvedTrackedSection = trackedSection;
+  const resolvedActiveSection = activeSection;
+  const resolvedSectionProgress = sectionProgress;
+  const resolvedWorksCardsProgress = worksCardsProgress;
+  const resolvedIntroProgress = introProgress;
+  const resolvedMissionTurnProgress = missionTurnProgress;
+  const resolvedVisionCoverProgress = visionCoverProgress;
+  const resolvedEndmarkFooterProgress = endmarkFooterProgress;
+  const resolvedHeroShotId = heroShotId;
+  const resolvedWorksWordHandoff = worksWordHandoff;
 
   useEffect(() => {
     trackedSectionRef.current = trackedSection;
@@ -326,6 +420,9 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
       setIntroProgress(nextDebugState.intro);
       setMissionTurnProgress(nextDebugState.missionTurnProgress);
       setVisionCoverProgress(nextDebugState.visionCoverProgress);
+      setServiceProgress(nextDebugState.serviceProgress);
+      setStelllaProgress(nextDebugState.stelllaProgress);
+      setOutroApproachProgress(nextDebugState.outroApproachProgress);
       setEndmarkFooterProgress(nextDebugState.endmarkFooterProgress);
       setHeroShotId(nextDebugState.heroShotId);
       setWorksWordHandoff(deriveWorksWordHandoff(nextDebugState.section, nextDebugState.progress));
@@ -368,6 +465,12 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
       setVisionCoverProgress(getVisionCoverProgress(sectionRefs.current));
     };
 
+    const syncLateSectionProgress = () => {
+      setServiceProgress(getServiceProgress(sectionRefs.current));
+      setStelllaProgress(getStelllaProgress(sectionRefs.current));
+      setOutroApproachProgress(getOutroApproachProgress(sectionRefs.current));
+    };
+
     const syncEndmarkFooterProgress = () => {
       setEndmarkFooterProgress(getEndmarkFooterProgress(sectionRefs.current));
     };
@@ -377,6 +480,7 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
       syncWorksCardsProgress();
       syncMissionTurnProgress();
       syncVisionCoverProgress();
+      syncLateSectionProgress();
       syncEndmarkFooterProgress();
       syncDisplayFromViewport();
     };
@@ -396,6 +500,7 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
         syncWorksCardsProgress();
         syncMissionTurnProgress();
         syncVisionCoverProgress();
+        syncLateSectionProgress();
         syncEndmarkFooterProgress();
         syncDisplayFromViewport();
       });
@@ -472,6 +577,7 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
         syncWorksCardsProgress();
         syncMissionTurnProgress();
         syncVisionCoverProgress();
+        syncLateSectionProgress();
         syncEndmarkFooterProgress();
         setWorksWordHandoff(getWorksWordHandoff(sectionRefs.current));
         syncDisplaySection(nextSection, progress);
@@ -536,6 +642,9 @@ export function useTopPageScroll({ sectionRefs }: UseTopPageScrollOptions) {
     introProgress: resolvedIntroProgress,
     missionTurnProgress: resolvedMissionTurnProgress,
     visionCoverProgress: resolvedVisionCoverProgress,
+    serviceProgress,
+    stelllaProgress,
+    outroApproachProgress,
     endmarkFooterProgress: resolvedEndmarkFooterProgress,
     heroShotId: resolvedHeroShotId,
     worksWordHandoff: resolvedWorksWordHandoff,

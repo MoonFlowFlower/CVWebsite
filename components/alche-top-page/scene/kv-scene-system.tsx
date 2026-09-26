@@ -37,6 +37,8 @@ import {
   type MaskedPrismLineArtUniforms,
   createPrismSideRainbowMaterial,
   type PrismSideRainbowUniforms,
+  createWorksPosterMaterial,
+  type WorksPosterUniforms,
 } from "@/components/alche-top-page/scene/alche-top-page-materials";
 import { createBentCardGeometry, placeOnArc } from "@/components/alche-top-page/scene/bent-card-helpers";
 import { assetPath } from "@/lib/site";
@@ -97,8 +99,8 @@ interface CenterHeroRenderState {
   rainbowUniforms: PrismSideRainbowUniforms;
 }
 
-const ALCHE_TOP_PRISM_ICE_OPACITY = 0.42;
-const ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY = 0.24;
+const ALCHE_TOP_PRISM_ICE_OPACITY = 0.62;
+const ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY = 0.62;
 const ALCHE_TOP_PRISM_CRYSTAL_EDGE_COLOR = "#e8fbff";
 const ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR = "#707985";
 const ALCHE_TOP_PRISM_REFRACTION_IDLE_TARGET_MAX = 512;
@@ -106,9 +108,11 @@ const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_TARGET_MAX = 384;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_INTERVAL = 1 / 30;
 const ALCHE_TOP_PRISM_REFRACTION_IDLE_INTERVAL = 0.5;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_HOLD = 0.18;
-const ALCHE_TOP_PRISM_READABLE_REFRACTION_STRENGTH = 0.07;
-const ALCHE_TOP_PRISM_READABLE_LENS_WARP_STRENGTH = 1.18;
-const ALCHE_TOP_PRISM_READABLE_CHROMATIC_STRENGTH = 0.0042;
+// works_outro glass A: stronger refraction + colour dispersion (reference read)
+const ALCHE_TOP_PRISM_READABLE_REFRACTION_STRENGTH = 0.14;
+const ALCHE_TOP_PRISM_READABLE_LENS_WARP_STRENGTH = 1.32;
+const ALCHE_TOP_PRISM_READABLE_CHROMATIC_STRENGTH = 0.0145;
+const ALCHE_TOP_PRISM_EMISSIVE_TARGET = 0.16;
 
 const leadCenterPose = getAlcheWorksCardPoseDefinition("lead-center");
 const cardForwardAxis = new THREE.Vector3(0, 0, 1);
@@ -123,7 +127,7 @@ function configureCardTexture(texture: THREE.Texture) {
   texture.needsUpdate = true;
 }
 
-function createIdentityCardTexture(label: "A" | "B", background: string) {
+function createIdentityCardTexture(label: string, background: string) {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 640;
@@ -398,8 +402,15 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     text.textAlign = "center";
     text.whiteSpace = "nowrap";
     text.letterSpacing = ALCHE_TOP_MOONFLOW.letterSpacing;
-    text.color = 0x070707;
+    text.color = 0xf6f8ff;
     text.fillOpacity = 0;
+    // Only the 500 weight ships; a same-colour SDF outline thickens the
+    // strokes toward the reference's heavy geometric wordmark.
+    text.outlineWidth = ALCHE_TOP_MOONFLOW.strokeBoldWidth;
+    text.outlineColor = 0xf6f8ff;
+    text.outlineOpacity = 0;
+    text.outlineBlur = 0;
+    (text.material as THREE.Material & { toneMapped?: boolean }).toneMapped = false;
     text.renderOrder = 1;
     text.position.set(0, ALCHE_TOP_MOONFLOW.y, targetPosition.z);
     const isLocalValidation =
@@ -437,6 +448,7 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     textRef.current.frustumCulled = false;
     if (!ready) {
       textRef.current.fillOpacity = 0;
+      textRef.current.outlineOpacity = 0;
       return;
     }
 
@@ -446,6 +458,7 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     textRef.current.rotation.set(0, 0, 0);
     textRef.current.scale.setScalar(THREE.MathUtils.damp(textRef.current.scale.x, targetScale, 3.8, delta));
     textRef.current.fillOpacity = THREE.MathUtils.damp(textRef.current.fillOpacity ?? 0, visibility * 0.98, 4.2, delta);
+    textRef.current.outlineOpacity = textRef.current.fillOpacity;
     if (layerDebugRef) {
       const worldPosition = textRef.current.getWorldPosition(new THREE.Vector3());
       layerDebugRef.current.worksHandoff = handoff;
@@ -469,7 +482,7 @@ function WallWordSweep({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: 0x09090b,
+        color: 0xf6f8ff,
         transparent: true,
         opacity: 0,
         depthTest: true,
@@ -490,7 +503,7 @@ function WallWordSweep({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     text.anchorY = "middle";
     text.textAlign = "center";
     text.whiteSpace = "nowrap";
-    text.color = 0x09090b;
+    text.color = 0xf6f8ff;
     text.fillOpacity = 1;
     curvedText.curveRadius = radius;
     curvedText.depthOffset = ALCHE_TOP_WALL_WORD.polygonDepthOffset;
@@ -522,14 +535,19 @@ function WallWordSweep({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     const handoff = worksWordHandoff;
     const enterMix = smoothstep(remapRange(handoff, ALCHE_TOP_WALL_WORD.enterStart, ALCHE_TOP_WALL_WORD.enterEnd));
     const fadeMix = smoothstep(remapRange(handoff, ALCHE_TOP_WALL_WORD.holdEnd, ALCHE_TOP_WALL_WORD.fadeEnd));
-    const targetX =
-      handoff <= ALCHE_TOP_WALL_WORD.enterEnd
+    // Reference keeps the giant word on the wall as a dim ghost behind the
+    // flying cards; it re-centers and fades back in during works_cards only.
+    const ghostActive = sceneState.activeSection === "works_cards";
+    const targetX = ghostActive
+      ? ALCHE_TOP_WALL_WORD.centerX
+      : handoff <= ALCHE_TOP_WALL_WORD.enterEnd
         ? THREE.MathUtils.lerp(ALCHE_TOP_WALL_WORD.enterX, ALCHE_TOP_WALL_WORD.centerX, enterMix)
         : handoff <= ALCHE_TOP_WALL_WORD.holdEnd
           ? ALCHE_TOP_WALL_WORD.centerX
           : THREE.MathUtils.lerp(ALCHE_TOP_WALL_WORD.centerX, ALCHE_TOP_WALL_WORD.exitX, fadeMix);
-    const opacityTarget =
-      handoff < ALCHE_TOP_WALL_WORD.enterStart
+    const opacityTarget = ghostActive
+      ? ALCHE_TOP_WALL_WORD.ghostOpacity
+      : handoff < ALCHE_TOP_WALL_WORD.enterStart
         ? 0
         : handoff <= ALCHE_TOP_WALL_WORD.enterEnd
           ? enterMix
@@ -537,7 +555,9 @@ function WallWordSweep({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
             ? 1
             : 1 - fadeMix;
 
-    textRef.current.position.x = THREE.MathUtils.damp(textRef.current.position.x, targetX, 4.4, delta);
+    textRef.current.position.x = ghostActive
+      ? targetX
+      : THREE.MathUtils.damp(textRef.current.position.x, targetX, 4.4, delta);
     textRef.current.rotation.set(0, 0, 0);
     material.opacity = THREE.MathUtils.damp(material.opacity, opacityTarget * ALCHE_TOP_WALL_WORD.fillOpacity, 5, delta);
     if (layerDebugRef) {
@@ -569,13 +589,12 @@ function WorksCardPair({
   layerDebugRef,
 }: Pick<KvSceneSystemProps, "sceneState" | "worksCardItems" | "cardDebugMode" | "reducedMotion" | "worksWordHandoff" | "layerDebugRef">) {
   const groupRef = useRef<THREE.Group>(null);
-  const leftRef = useRef<THREE.Mesh>(null);
-  const rightRef = useRef<THREE.Mesh>(null);
+  const cardRefs = useRef<(THREE.Mesh | null)[]>([]);
   const texturePaths = useMemo(() => worksCardItems.map((item) => assetPath(item.imageSrc)), [worksCardItems]);
   const posterTextures = useLoader(THREE.TextureLoader, texturePaths);
   const identityTextures = useMemo(
-    () => [createIdentityCardTexture("A", "#242934"), createIdentityCardTexture("B", "#242934")] as const,
-    [],
+    () => worksCardItems.map((_, index) => createIdentityCardTexture(String.fromCharCode(65 + (index % 26)), "#242934")),
+    [worksCardItems],
   );
   const card0WorldRef = useRef(new THREE.Vector3());
   const card1WorldRef = useRef(new THREE.Vector3());
@@ -603,21 +622,10 @@ function WorksCardPair({
       }),
     [],
   );
+  const posterUniforms = useMemo<WorksPosterUniforms>(() => ({ uTime: { value: 0 }, uSheen: { value: 1 } }), []);
   const posterMaterials = useMemo(
-    () =>
-      posterTextures.map(
-        (texture) =>
-          new THREE.MeshStandardMaterial({
-            map: texture,
-            color: "#ffffff",
-            roughness: 0.35,
-            metalness: 0,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0,
-          }),
-      ),
-    [posterTextures],
+    () => posterTextures.map((texture) => createWorksPosterMaterial(texture, posterUniforms)),
+    [posterTextures, posterUniforms],
   );
   const identityMaterials = useMemo(
     () =>
@@ -652,16 +660,28 @@ function WorksCardPair({
   }, [geometry, identityMaterials, identityTextures, posterMaterials]);
 
   useFrame((state, delta) => {
-    if (!groupRef.current || !leftRef.current || !rightRef.current || materials.length < 2) return;
+    if (!groupRef.current || materials.length < 2) return;
+    posterUniforms.uTime.value = state.clock.elapsedTime;
+    const meshes = materials.map((_, index) => cardRefs.current[index]);
+    if (meshes.some((mesh) => !mesh)) return;
 
+    const cardCount = materials.length;
+    const lastIndex = cardCount - 1;
     const inWorksCards = sceneState.activeSection === "works_cards";
     const inWorksOutro = sceneState.activeSection === "works_outro";
     const outroMix = inWorksOutro ? smoothstep(clamp01(sceneState.worksOutro.clearMix)) : sceneState.activeSection === "mission_in" ? 1 : 0;
     const cardsVisible = worksWordHandoff >= 0.985 && (inWorksCards || inWorksOutro) && outroMix < 0.999;
     const progress = sceneState.worksCardsProgress;
-    const segment = getAlcheWorksCardsSegment(progress);
+    const cycle0Progress = Math.min(progress, 1);
+    const segment = getAlcheWorksCardsSegment(cycle0Progress);
     const handoffMix = smoothstep(clamp01(segment.phase === "handoff" ? segment.mix : segment.phase === "settled" ? 1 : 0));
     const cardsSequenceVisible = cardsVisible && inWorksCards;
+    const maxCycleIndex = Math.max(0, Math.min(ALCHE_TOP_WORKS_CARDS.cyclesTotal - 1, cardCount - 2));
+    const cycleIndex = Math.max(0, Math.min(Math.floor(progress), maxCycleIndex));
+    const cycleU = clamp01(progress - cycleIndex);
+    const extraQueueEnd = ALCHE_TOP_WORKS_CARDS.extraCycleQueueEnd;
+    const extraLeadEnd = ALCHE_TOP_WORKS_CARDS.extraCycleLeadEnd;
+    const extraHandoffMix = smoothstep(clamp01((cycleU - extraQueueEnd) / Math.max(extraLeadEnd - extraQueueEnd, 0.0001)));
     const compensatedQueueRightLowerOffscreenPose = getCompensatedAlcheWorksCardPoseDefinition(
       "queue-right-lower-offscreen",
       state.size.width,
@@ -702,40 +722,128 @@ function WorksCardPair({
       supportStart: null,
       supportEnd: null,
     };
-    const card0Visible =
-      inWorksOutro || !cardsSequenceVisible ? cardsVisible : cardsSequenceVisible && isWorksCardTrackVisible(progress, card0Timing);
-    const card1Visible =
-      inWorksOutro
-        ? cardsVisible && outroMix < 0.985
-        : cardsSequenceVisible && isWorksCardTrackVisible(progress, card1Timing);
-    const leadIndex = !cardsVisible ? null : inWorksOutro ? 1 : segment.phase === "entry" || segment.phase === "queue" ? 0 : handoffMix >= 0.5 ? 1 : 0;
-    const supportIndex = !card1Visible || leadIndex === null ? null : leadIndex === 0 ? 1 : 0;
-    const card0Pose =
-      inWorksOutro
-        ? compensatedExitLeftOffscreenPose
-        : resolveWorksCardTrackPose({
-            progress,
+
+    // Reference pacing: the lead card HOLDS center while the next card slides
+    // into the right-edge queue; the actual handoff is a fast crossover
+    // (outgoing exits left while the incoming commits to center), so the lead
+    // slot is never left empty.
+    const extraQueueCommitMix = Math.pow(extraHandoffMix, 1.35);
+    const resolveExtraLeadPose = (u: number): WorksCardPose => {
+      if (u <= extraQueueEnd) return leadCenterPose;
+      if (extraHandoffMix <= 0.6) {
+        return lerpWorksCardPose(leadCenterPose, compensatedSupportLeftUpperPose, smoothstep(clamp01(extraHandoffMix / 0.6)));
+      }
+      return lerpWorksCardPose(
+        compensatedSupportLeftUpperPose,
+        compensatedExitLeftOffscreenPose,
+        smoothstep(clamp01((extraHandoffMix - 0.6) / 0.4)),
+      );
+    };
+    const extraQueueInEnd = 0.3;
+    const resolveExtraQueuePose = (u: number): WorksCardPose => {
+      if (u <= extraQueueInEnd) {
+        return lerpWorksCardPose(
+          compensatedQueueRightLowerOffscreenPose,
+          compensatedQueueRightLowerPose,
+          smoothstep(clamp01(u / Math.max(extraQueueInEnd, 0.0001))),
+        );
+      }
+      if (u <= extraQueueEnd) return compensatedQueueRightLowerPose;
+      if (u <= extraLeadEnd) {
+        return lerpWorksCardPose(compensatedQueueRightLowerPose, leadCenterPose, extraQueueCommitMix);
+      }
+      return leadCenterPose;
+    };
+    // Softer facing for the edge-hugging incoming card; eases out as it lands.
+    const extraQueueYawOffset = -0.16 * (1 - extraQueueCommitMix);
+
+    const poses: WorksCardPose[] = [];
+    const visibles: boolean[] = [];
+    const yawOffsets: number[] = [];
+    for (let index = 0; index < cardCount; index += 1) {
+      yawOffsets.push(index === cycleIndex + 1 && cycleIndex > 0 && !inWorksOutro ? extraQueueYawOffset : 0);
+      if (inWorksOutro) {
+        if (index === lastIndex) {
+          poses.push(lerpWorksCardPose(leadCenterPose, compensatedWorksOutroLeftClearPose, outroMix));
+          visibles.push(cardsVisible && outroMix < 0.985);
+        } else {
+          poses.push(compensatedExitLeftOffscreenPose);
+          visibles.push(cardsVisible);
+        }
+        continue;
+      }
+
+      if (cycleIndex === 0 && index === 0) {
+        poses.push(
+          resolveWorksCardTrackPose({
+            progress: cycle0Progress,
             timing: card0Timing,
             queueOffscreenPose: compensatedQueueRightLowerOffscreenPose,
             queuePose: compensatedQueueRightLowerPose,
             leadPose: leadCenterPose,
             supportPose: compensatedExitLeftOffscreenPose,
-          });
-    const card1Pose =
-      inWorksOutro
-        ? lerpWorksCardPose(leadCenterPose, compensatedWorksOutroLeftClearPose, outroMix)
-        : resolveWorksCardTrackPose({
-            progress,
+          }),
+        );
+        visibles.push(cardsSequenceVisible && isWorksCardTrackVisible(cycle0Progress, card0Timing));
+        continue;
+      }
+
+      if (cycleIndex === 0 && index === 1) {
+        poses.push(
+          resolveWorksCardTrackPose({
+            progress: cycle0Progress,
             timing: card1Timing,
             queueOffscreenPose: compensatedQueueRightLowerOffscreenPose,
             queuePose: compensatedQueueRightLowerPose,
             leadPose: leadCenterPose,
             supportPose: compensatedSupportLeftUpperPose,
-          });
+          }),
+        );
+        visibles.push(cardsSequenceVisible && isWorksCardTrackVisible(cycle0Progress, card1Timing));
+        continue;
+      }
 
-    groupRef.current.visible = cardsVisible && (card0Visible || card1Visible);
-    leftRef.current.visible = card0Visible;
-    rightRef.current.visible = card1Visible;
+      if (index < cycleIndex) {
+        poses.push(compensatedExitLeftOffscreenPose);
+        visibles.push(false);
+      } else if (index === cycleIndex) {
+        poses.push(resolveExtraLeadPose(cycleU));
+        visibles.push(cardsSequenceVisible);
+      } else if (index === cycleIndex + 1) {
+        poses.push(resolveExtraQueuePose(cycleU));
+        visibles.push(cardsSequenceVisible && cycleU > 0.02);
+      } else {
+        poses.push(compensatedQueueRightLowerOffscreenPose);
+        visibles.push(false);
+      }
+    }
+
+    const realLeadIndex = !cardsVisible
+      ? null
+      : inWorksOutro
+        ? lastIndex
+        : cycleIndex === 0
+          ? segment.phase === "entry" || segment.phase === "queue"
+            ? 0
+            : handoffMix >= 0.5
+              ? 1
+              : 0
+          : extraHandoffMix >= 0.5
+            ? Math.min(cycleIndex + 1, lastIndex)
+            : cycleIndex;
+
+    // Debug slots: slot 0 always mirrors mesh 0; slot 1 mirrors the card that
+    // plays the legacy "B" role (last card during works_outro).
+    const secondarySlotIndex = inWorksOutro ? lastIndex : cycleIndex === 0 ? 1 : Math.min(cycleIndex + 1, lastIndex);
+    const card0Visible = inWorksOutro ? cardsVisible : visibles[0];
+    const card1Visible = visibles[secondarySlotIndex];
+    const leadIndex =
+      realLeadIndex === null ? null : inWorksOutro ? 1 : realLeadIndex === secondarySlotIndex ? 1 : realLeadIndex === 0 ? 0 : 0;
+    const supportIndex = !card1Visible || leadIndex === null ? null : leadIndex === 0 ? 1 : 0;
+    const leftMesh = meshes[0] as THREE.Mesh;
+    const rightMesh = meshes[secondarySlotIndex] as THREE.Mesh;
+
+    groupRef.current.visible = cardsVisible && visibles.some(Boolean);
     if (!cardsVisible) {
       materials.forEach((material) => {
         material.opacity = THREE.MathUtils.damp(material.opacity, 0, 6.2, delta);
@@ -772,50 +880,47 @@ function WorksCardPair({
       }
       return;
     }
-    const card0Float = reducedMotion || pinnedShotMode ? 0 : Math.sin(state.clock.elapsedTime * 0.48) * 0.012;
-    const card1Float = reducedMotion || pinnedShotMode ? 0 : Math.sin(state.clock.elapsedTime * 0.34 + 1.4) * 0.008;
-    const card0TargetY = card0Pose.yOffset + card0Float;
-    const card1TargetY = card1Pose.yOffset + card1Float;
-    const card0Radius = Math.max(0.001, ALCHE_TOP_WORKS_CARDS.baseRadius + card0Pose.radiusOffset);
-    const card1Radius = Math.max(0.001, ALCHE_TOP_WORKS_CARDS.baseRadius + card1Pose.radiusOffset);
+    for (let index = 0; index < cardCount; index += 1) {
+      const mesh = meshes[index] as THREE.Mesh;
+      const pose = poses[index];
+      const cardFloat =
+        reducedMotion || pinnedShotMode || !visibles[index]
+          ? 0
+          : Math.sin(state.clock.elapsedTime * (0.48 - index * 0.05) + index * 1.4) * (0.012 - index * 0.001);
+      const targetY = pose.yOffset + cardFloat;
+      const radius = Math.max(0.001, ALCHE_TOP_WORKS_CARDS.baseRadius + pose.radiusOffset);
 
-    placeOnArc(leftRef.current, {
-      angle: card0Pose.angle,
-      radius: card0Radius,
-      centerX: ALCHE_TOP_WORKS_CARDS.arcCenterX,
-      centerZ: ALCHE_TOP_WORKS_CARDS.arcCenterZ,
-      y: card0Pose.yOffset,
-    });
-    leftRef.current.position.y = pinnedShotMode
-      ? card0TargetY
-      : THREE.MathUtils.damp(leftRef.current.position.y, card0TargetY, 4.2, delta);
-    leftRef.current.scale.setScalar(
-      pinnedShotMode ? card0Pose.scale : THREE.MathUtils.damp(leftRef.current.scale.x, card0Pose.scale, 4.2, delta),
-    );
+      placeOnArc(mesh, {
+        angle: pose.angle,
+        radius,
+        centerX: ALCHE_TOP_WORKS_CARDS.arcCenterX,
+        centerZ: ALCHE_TOP_WORKS_CARDS.arcCenterZ,
+        y: pose.yOffset,
+        yawOffset: yawOffsets[index],
+      });
+      mesh.position.y = pinnedShotMode ? targetY : THREE.MathUtils.damp(mesh.position.y, targetY, 4.2, delta);
+      mesh.scale.setScalar(pinnedShotMode ? pose.scale : THREE.MathUtils.damp(mesh.scale.x, pose.scale, 4.2, delta));
+      mesh.visible = visibles[index] || (inWorksOutro && cardsVisible);
 
-    placeOnArc(rightRef.current, {
-      angle: card1Pose.angle,
-      radius: card1Radius,
-      centerX: ALCHE_TOP_WORKS_CARDS.arcCenterX,
-      centerZ: ALCHE_TOP_WORKS_CARDS.arcCenterZ,
-      y: card1Pose.yOffset,
-    });
-    rightRef.current.position.y = pinnedShotMode
-      ? card1TargetY
-      : THREE.MathUtils.damp(rightRef.current.position.y, card1TargetY, 4.2, delta);
-    rightRef.current.scale.setScalar(
-      pinnedShotMode ? card1Pose.scale : THREE.MathUtils.damp(rightRef.current.scale.x, card1Pose.scale, 4.2, delta),
-    );
-
-    const card0TargetOpacity = card0Visible ? (inWorksOutro ? 1 - outroMix * 0.72 : 1) : 0;
-    const card1TargetOpacity = card1Visible ? (inWorksOutro ? 1 - outroMix : 1) : 0;
-    materials[0].opacity = card0TargetOpacity;
-    materials[1].opacity = card1TargetOpacity;
+      const targetOpacity = inWorksOutro
+        ? index === lastIndex
+          ? card1Visible
+            ? 1 - outroMix
+            : 0
+          : cardsVisible
+            ? 1 - outroMix * 0.72
+            : 0
+        : visibles[index]
+          ? 1
+          : 0;
+      materials[index].opacity = targetOpacity;
+    }
 
     if (layerDebugRef) {
-      leftRef.current.getWorldPosition(card0WorldRef.current);
+      const secondaryMaterial = materials[secondarySlotIndex];
+      leftMesh.getWorldPosition(card0WorldRef.current);
       measureObjectScreenBounds(
-        leftRef.current,
+        leftMesh,
         state.camera,
         state.size.width,
         state.size.height,
@@ -826,9 +931,9 @@ function WorksCardPair({
       );
 
       if (card1Visible) {
-        rightRef.current.getWorldPosition(card1WorldRef.current);
+        rightMesh.getWorldPosition(card1WorldRef.current);
         measureObjectScreenBounds(
-          rightRef.current,
+          rightMesh,
           state.camera,
           state.size.width,
           state.size.height,
@@ -851,42 +956,47 @@ function WorksCardPair({
         supportWorldRef.current.copy(card1WorldRef.current);
       }
 
-      layerDebugRef.current.cardsOpacity = Math.max(card0Visible ? materials[0].opacity : 0, card1Visible ? materials[1].opacity : 0);
+      layerDebugRef.current.cardsOpacity = Math.max(
+        card0Visible ? materials[0].opacity : 0,
+        card1Visible ? secondaryMaterial.opacity : 0,
+      );
       layerDebugRef.current.cardsLeadIndex = leadIndex;
-      layerDebugRef.current.cardsLeadOpacity = leadIndex === null ? null : materials[leadIndex]?.opacity ?? null;
-      layerDebugRef.current.cardsSupportOpacity = supportIndex === null ? null : materials[supportIndex]?.opacity ?? null;
+      layerDebugRef.current.cardsLeadOpacity =
+        leadIndex === null ? null : (leadIndex === 0 ? materials[0] : secondaryMaterial)?.opacity ?? null;
+      layerDebugRef.current.cardsSupportOpacity =
+        supportIndex === null ? null : (supportIndex === 0 ? materials[0] : secondaryMaterial)?.opacity ?? null;
       layerDebugRef.current.card0Opacity = card0Visible ? materials[0]?.opacity ?? null : null;
-      layerDebugRef.current.card1Opacity = card1Visible ? materials[1]?.opacity ?? null : null;
+      layerDebugRef.current.card1Opacity = card1Visible ? secondaryMaterial?.opacity ?? null : null;
       layerDebugRef.current.card0WorldX = card0WorldRef.current.x;
       layerDebugRef.current.card0WorldZ = card0WorldRef.current.z;
       layerDebugRef.current.card1WorldX = card1Visible ? card1WorldRef.current.x : null;
       layerDebugRef.current.card1WorldZ = card1Visible ? card1WorldRef.current.z : null;
       card0FacingTargetRef.current
         .set(
-          leftRef.current.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
+          leftMesh.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
           0,
-          leftRef.current.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
+          leftMesh.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
         )
         .normalize();
-      card0ForwardRef.current.copy(cardForwardAxis).applyQuaternion(leftRef.current.quaternion).setY(0).normalize();
+      card0ForwardRef.current.copy(cardForwardAxis).applyQuaternion(leftMesh.quaternion).setY(0).normalize();
       layerDebugRef.current.card0ArcAngle = Math.atan2(
-        leftRef.current.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
-        leftRef.current.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
+        leftMesh.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
+        leftMesh.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
       );
       layerDebugRef.current.card0FacingError = card0ForwardRef.current.angleTo(card0FacingTargetRef.current);
 
       if (card1Visible) {
         card1FacingTargetRef.current
           .set(
-            rightRef.current.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
+            rightMesh.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
             0,
-            rightRef.current.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
+            rightMesh.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
           )
           .normalize();
-        card1ForwardRef.current.copy(cardForwardAxis).applyQuaternion(rightRef.current.quaternion).setY(0).normalize();
+        card1ForwardRef.current.copy(cardForwardAxis).applyQuaternion(rightMesh.quaternion).setY(0).normalize();
         layerDebugRef.current.card1ArcAngle = Math.atan2(
-          rightRef.current.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
-          rightRef.current.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
+          rightMesh.position.x - ALCHE_TOP_WORKS_CARDS.arcCenterX,
+          rightMesh.position.z - ALCHE_TOP_WORKS_CARDS.arcCenterZ,
         );
         layerDebugRef.current.card1FacingError = card1ForwardRef.current.angleTo(card1FacingTargetRef.current);
       } else {
@@ -912,8 +1022,17 @@ function WorksCardPair({
 
   return (
     <group ref={groupRef} position={[0, ALCHE_TOP_WORKS_CARDS.groupY, ALCHE_TOP_WORKS_CARDS.groupZ]} visible={false}>
-      <mesh ref={leftRef} geometry={geometry} material={materials[0]} renderOrder={6} />
-      <mesh ref={rightRef} geometry={geometry} material={materials[1]} renderOrder={6} />
+      {materials.map((material, index) => (
+        <mesh
+          key={index}
+          ref={(node) => {
+            cardRefs.current[index] = node;
+          }}
+          geometry={geometry}
+          material={material}
+          renderOrder={6}
+        />
+      ))}
     </group>
   );
 }
@@ -967,7 +1086,7 @@ function CenterHeroModel({
     const maskedLineArtScene = gltf.scene.clone(true) as THREE.Group;
     const rainbowScene = gltf.scene.clone(true) as THREE.Group;
     const iceTexture = createIcePrismTexture();
-    const sceneTextureFallback = new THREE.DataTexture(new Uint8Array([246, 250, 252, 255]), 1, 1, THREE.RGBAFormat);
+    const sceneTextureFallback = new THREE.DataTexture(new Uint8Array([12, 13, 18, 255]), 1, 1, THREE.RGBAFormat);
     sceneTextureFallback.colorSpace = THREE.SRGBColorSpace;
     sceneTextureFallback.needsUpdate = true;
     const shadedMaterials: THREE.MeshStandardMaterial[] = [];
@@ -991,6 +1110,7 @@ function CenterHeroModel({
       uOpacity: { value: 0 },
       uRainbowMix: { value: 0 },
       uBlackMix: { value: 0 },
+      uCoverMix: { value: 0 },
       uTargetFaceNormal: {
         value: new THREE.Vector3(...ALCHE_TOP_CENTER_MODEL.rainbowFaceNormal),
       },
@@ -1148,7 +1268,11 @@ function CenterHeroModel({
         ? sceneState.kv.prismVisibility
         : sceneState.activeSection === "works_intro" || sceneState.activeSection === "works" || sceneState.activeSection === "works_outro"
         ? sceneState.kv.visible
-        : sceneState.kv.prismVisibility * sceneState.kv.visible;
+        : sceneState.activeSection === "works_cards"
+          ? // Reference: the crystal fully yields the stage to the flying cards
+            // and only returns for the works_outro flip.
+            0
+          : sceneState.kv.prismVisibility * sceneState.kv.visible;
 
     if (pointerDebugRef) {
       pointerDebugRef.current.r3fPointerX = state.pointer.x;
@@ -1179,7 +1303,12 @@ function CenterHeroModel({
     texturedScene.shadedMaterials.forEach((material) => {
       const iceDamp = splitEnabled ? 10 : 4;
       material.opacity = THREE.MathUtils.damp(material.opacity, iceVisibilityTarget * ALCHE_TOP_PRISM_ICE_OPACITY, iceDamp, delta);
-      material.emissiveIntensity = THREE.MathUtils.damp(material.emissiveIntensity, iceVisibilityTarget * 0.44, iceDamp, delta);
+      material.emissiveIntensity = THREE.MathUtils.damp(
+        material.emissiveIntensity,
+        iceVisibilityTarget * ALCHE_TOP_PRISM_EMISSIVE_TARGET,
+        iceDamp,
+        delta,
+      );
     });
     const edgeDamp = missionPanelActive ? 10 : 4;
     texturedScene.hiddenMaterial.depthWrite = renderMode === "edge-overlay";
@@ -1213,6 +1342,14 @@ function CenterHeroModel({
       texturedScene.rainbowUniforms.uBlackMix.value,
       splitEnabled ? sceneState.kv.prismRainbowBlackMix : 0,
       edgeDamp,
+      delta,
+    );
+    texturedScene.rainbowUniforms.uCoverMix.value = THREE.MathUtils.damp(
+      texturedScene.rainbowUniforms.uCoverMix.value,
+      splitEnabled
+        ? clamp01((sceneState.kv.prismGroupScale - 1) / Math.max(ALCHE_TOP_CENTER_MODEL.coverScale - 1, 0.0001))
+        : 0,
+      6.4,
       delta,
     );
 
@@ -1307,6 +1444,22 @@ function CenterHeroModel({
       delta,
     );
     groupRef.current.scale.setScalar(nextGroupScale);
+    // The GLB tunnel is ~half as deep as it is tall, which hides the
+    // through-hole in perspective. Reference kv crystal is a shallow frame,
+    // so squash depth while front-facing and restore it for the mission turn
+    // (whose side-slab read depends on the full depth).
+    const turnMix = smoothstep(
+      remapRange(
+        Math.abs(groupRef.current.rotation.y - ALCHE_TOP_CENTER_MODEL.baseRotationY) / ALCHE_TOP_CENTER_MODEL.missionTurnRadians,
+        0.25,
+        0.9,
+      ),
+    );
+    const depthScale = texturedScene.modelScale * THREE.MathUtils.lerp(ALCHE_TOP_CENTER_MODEL.kvDepthScale, 1, turnMix);
+    texturedScene.shadedScene.scale.z = depthScale;
+    texturedScene.edgeScene.scale.z = depthScale;
+    texturedScene.maskedLineArtScene.scale.z = depthScale;
+    texturedScene.rainbowScene.scale.z = depthScale;
     if (pointerDebugRef) {
       pointerDebugRef.current.modelRotationX = groupRef.current.rotation.x;
       pointerDebugRef.current.modelRotationY = groupRef.current.rotation.y;
