@@ -398,7 +398,10 @@ export const ALCHE_TOP_CENTER_MODEL = {
   targetHeight: 2.3,
   // Front-facing depth multiplier (restored to 1 through the mission turn).
   kvDepthScale: 0.55,
-  rainbowFaceNormal: [0.866025, 0.5, 0] as const,
+  // Outer side face that turns toward the camera after the +Y mission turn.
+  // With the apex-up orientation (baseRotationZ 0) this is the left face; the
+  // old +x normal landed on the back side and the visible slab stayed grey.
+  rainbowFaceNormal: [-0.866025, 0.5, 0] as const,
   baseRotationX: 0,
   baseRotationY: 0.002754,
   // Reference kv crystal points up (apex at top); the GLB is authored apex-up,
@@ -407,8 +410,9 @@ export const ALCHE_TOP_CENTER_MODEL = {
   missionTurnRadians: 1.57,
   missionTurnStartOffset: 0,
   coverScale: 6.2,
-  pointerYawStrength: 0.18,
-  pointerPitchStrength: 0.08,
+  // Mouse-follow tilt in radians at the viewport edge.
+  pointerYawStrength: 0.42,
+  pointerPitchStrength: 0.26,
   rotationDamp: 3.8,
 } as const;
 
@@ -434,8 +438,11 @@ export const ALCHE_TOP_SECTIONS: readonly AlcheTopSectionDefinition[] = [
   { id: "mission_in", label: "mission_in", groupId: "about", snapRatio: 1, minHeight: sectionHeight(1) },
   { id: "mission", label: "mission", groupId: "about", snapRatio: 1, minHeight: sectionHeight(1.05) },
   { id: "vision", label: "vision", groupId: "vision", snapRatio: 1.8, minHeight: sectionHeight(1.7) },
-  { id: "vision_out", label: "vision_out", groupId: "vision", snapRatio: 1, minHeight: sectionHeight(1) },
-  { id: "service_in", label: "service_in", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1) },
+  // Reference cuts from the full-screen rainbow slab (16.0s) to service
+  // (16.5s) almost immediately; full-height vision_out + service_in left
+  // ~2.5 viewports of empty black scroll.
+  { id: "vision_out", label: "vision_out", groupId: "vision", snapRatio: 1, minHeight: sectionHeight(0.4) },
+  { id: "service_in", label: "service_in", groupId: "service", snapRatio: 1, minHeight: sectionHeight(0.5) },
   { id: "service", label: "service", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1.15) },
   { id: "stellla", label: "stellla", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1.22) },
   { id: "outro", label: "outro", groupId: null, snapRatio: 1.5, minHeight: sectionHeight(1.45) },
@@ -964,7 +971,8 @@ export function deriveTopSceneState(
   );
   const missionTurnMix = smoothstep(clamp01(missionTurnProgress));
   const visionCoverMix = smoothstep(clamp01(visionCoverProgress));
-  const visionBlackMix = smoothstep(remapRange(visionCoverProgress, 0.5, 1.0));
+  // Keep the rainbow vivid while it floods the screen; darken only at the end.
+  const visionBlackMix = smoothstep(remapRange(visionCoverProgress, 0.85, 1.0));
 
   if (missionTurnMix > 0) {
     kv.prismRotationY =

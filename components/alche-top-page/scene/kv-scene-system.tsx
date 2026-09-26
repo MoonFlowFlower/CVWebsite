@@ -1050,9 +1050,9 @@ function WorksCardPair({
 function CenterHeroModel({
   sceneState,
   captureMode,
-  reducedMotion: _reducedMotion,
+  reducedMotion,
   renderMode,
-  pointerOverride: _pointerOverride,
+  pointerOverride,
   pointerDebugRef,
   layerDebugRef,
 }: Pick<
@@ -1090,6 +1090,10 @@ function CenterHeroModel({
   const refractionCaptureCountRef = useRef(0);
   const lastRefractionStateKeyRef = useRef("");
   const lastRefractionMotionTimeRef = useRef(-Infinity);
+  // Window-level pointer (the DOM shell sits above the canvas, so R3F's own
+  // pointer never updates). Normalised to [-1, 1], +y up.
+  const windowPointerRef = useRef({ x: 0, y: 0 });
+  const pointerTiltRef = useRef({ yaw: 0, pitch: 0, weight: 0 });
   const texturedScene = useMemo<CenterHeroRenderState>(() => {
     const shadedScene = gltf.scene.clone(true) as THREE.Group;
     const edgeScene = gltf.scene.clone(true) as THREE.Group;
@@ -1231,6 +1235,24 @@ function CenterHeroModel({
   }, [gltf.scene]);
 
   useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      windowPointerRef.current.x = (event.clientX / Math.max(window.innerWidth, 1)) * 2 - 1;
+      windowPointerRef.current.y = -((event.clientY / Math.max(window.innerHeight, 1)) * 2 - 1);
+    };
+    const handlePointerLeave = () => {
+      windowPointerRef.current.x = 0;
+      windowPointerRef.current.y = 0;
+    };
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", handlePointerLeave);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      document.documentElement.removeEventListener("pointerleave", handlePointerLeave);
+    };
+  }, []);
+
+  useEffect(() => {
     if (renderMode !== "full") return;
     if (typeof window === "undefined") return;
 
@@ -1285,10 +1307,6 @@ function CenterHeroModel({
             0
           : sceneState.kv.prismVisibility * sceneState.kv.visible;
 
-    if (pointerDebugRef) {
-      pointerDebugRef.current.r3fPointerX = state.pointer.x;
-      pointerDebugRef.current.r3fPointerY = state.pointer.y;
-    }
 
     state.gl.getDrawingBufferSize(drawingBufferSize);
     texturedScene.prismIceUniforms.uViewportPx.value.copy(drawingBufferSize);
@@ -1435,22 +1453,44 @@ function CenterHeroModel({
       ALCHE_TOP_CENTER_MODEL.rotationDamp,
       delta,
     );
+    // Mouse-follow tilt (reference kv "MainLogo" reacts to the cursor). Only
+    // in the crystal-led sections; the mission turn / vision cover keep their
+    // scripted pose. Disabled for reduced motion and pinned captures unless a
+    // pointer override is supplied.
+    const pointerSection =
+      sceneState.activeSection === "loading" ||
+      sceneState.activeSection === "kv" ||
+      sceneState.activeSection === "works_intro" ||
+      sceneState.activeSection === "works" ||
+      sceneState.activeSection === "works_cards" ||
+      sceneState.activeSection === "works_outro";
+    const pointerSource = pointerOverride ?? (captureMode || reducedMotion ? null : windowPointerRef.current);
+    const tilt = pointerTiltRef.current;
+    tilt.weight = THREE.MathUtils.damp(tilt.weight, pointerSection && pointerSource ? 1 : 0, 3, delta);
+    tilt.yaw = THREE.MathUtils.damp(tilt.yaw, (pointerSource?.x ?? 0) * ALCHE_TOP_CENTER_MODEL.pointerYawStrength, 2.6, delta);
+    tilt.pitch = THREE.MathUtils.damp(tilt.pitch, -(pointerSource?.y ?? 0) * ALCHE_TOP_CENTER_MODEL.pointerPitchStrength, 2.6, delta);
+    if (pointerDebugRef) {
+      pointerDebugRef.current.r3fPointerX = pointerSource?.x ?? 0;
+      pointerDebugRef.current.r3fPointerY = pointerSource?.y ?? 0;
+    }
+
     groupRef.current.rotation.x = THREE.MathUtils.damp(
       groupRef.current.rotation.x,
-      sceneState.kv.prismRotationX,
+      sceneState.kv.prismRotationX + tilt.pitch * tilt.weight,
       ALCHE_TOP_CENTER_MODEL.rotationDamp,
       delta,
     );
     // The frame is symmetric under a half turn about Y, so when the target
     // jumps by ~pi (e.g. leaving the works-entry half turn) re-express the
     // current angle one half turn over instead of visibly spinning back.
-    const yawGap = sceneState.kv.prismRotationY - groupRef.current.rotation.y;
+    const targetYaw = sceneState.kv.prismRotationY + tilt.yaw * tilt.weight;
+    const yawGap = targetYaw - groupRef.current.rotation.y;
     if (Math.abs(yawGap) > Math.PI * 0.75) {
       groupRef.current.rotation.y += Math.sign(yawGap) * Math.PI;
     }
     groupRef.current.rotation.y = THREE.MathUtils.damp(
       groupRef.current.rotation.y,
-      sceneState.kv.prismRotationY,
+      targetYaw,
       ALCHE_TOP_CENTER_MODEL.rotationDamp,
       delta,
     );

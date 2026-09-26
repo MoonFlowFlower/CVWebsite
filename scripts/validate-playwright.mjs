@@ -2709,7 +2709,10 @@ async function captureVisionCoverLiveEndState(browser, options = {}) {
     });
 
     assert((bottomSnapshot.visionCoverProgress ?? 0) >= 0.98, "Expected wide live end-state to reach full vision cover progress.");
-    assert((bottomSnapshot.prismGroupScale ?? 0) >= 3.95, "Expected wide live end-state to reach the configured prism group scale.");
+    assert(
+      (bottomSnapshot.prismGroupScale ?? 0) >= 3.95,
+      `Expected wide live end-state to reach the configured prism group scale, got ${bottomSnapshot.prismGroupScale} (section ${bottomSnapshot.activeSection ?? "?"}).`,
+    );
     assert(Math.abs((bottomSnapshot.scrollY ?? 0) - (bottomSnapshot.maxScroll ?? 0)) <= 2, "Expected wide live end-state capture to occur at the document bottom.");
     assert(
       bottomSnapshot.viewportWidth === viewport.width && bottomSnapshot.viewportHeight === viewport.height,

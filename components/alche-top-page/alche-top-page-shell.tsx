@@ -370,7 +370,7 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
     GitHub: githubHref,
     Email: contactHref,
   };
-  const servicePanelVisible = serviceProgress > 0.1 && serviceProgress < 0.97 && !endmarkFooterVisible;
+  const servicePanelVisible = serviceProgress > 0.02 && serviceProgress < 0.97 && !endmarkFooterVisible;
   const stelllaPanelVisible = stelllaProgress > 0.06 && outroApproachProgress < 0.5 && !endmarkFooterVisible;
   const missionLightPhase =
     missionPanelProgress > 0.6 && serviceProgress < 0.08 && visionCoverProgress < 0.72 && !endmarkTriggerActive;

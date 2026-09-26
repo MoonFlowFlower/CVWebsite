@@ -4,6 +4,35 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Fifth pass (2026-09-26): vision gap, crystal refraction, mouse tilt
+
+- **Vision rainbow was on the back face.** After the apex-up flip
+  (baseRotationZ pi -> 0) the +x `rainbowFaceNormal` pointed away from the
+  camera after the +Y mission turn, so the visible slab stayed grey. Now
+  `[-0.866025, 0.5, 0]`. Rainbow palette is a vivid full-spectrum gradient
+  with soft gloss (reference 15.0-16.0s) instead of pastel cyan/violet/pink.
+- **Dead zone after the cover:** vision cover now ends when vision leaves the
+  active viewport line (was one full viewport earlier); black fade starts at
+  cover 0.85 (was 0.5); `vision_out` 1.0 -> 0.4 and `service_in` 1.0 -> 0.5
+  section heights; service panel shows from serviceProgress 0.02 (was 0.1).
+  Free-scroll now: mission -> turn -> rainbow slab + copy -> rainbow flood ->
+  short dark cut -> service.
+- **Crystal speckle:** frost jitter was screen-space per-pixel noise; now a
+  smooth low-frequency warp in the crystal's uv space (stripes ripple like
+  the reference). Refraction target budget unchanged (512 idle / 384 active,
+  validator-enforced).
+- **Mouse tilt:** `pointerYawStrength`/`pointerPitchStrength` existed but were
+  never applied. CenterHeroModel now listens on window `pointermove` (the DOM
+  shell covers the canvas, so R3F's pointer never updated), damped tilt
+  0.42 / 0.26 rad, only in loading/kv/works* sections, disabled for reduced
+  motion and captures (unless `pointerOverride` is set).
+- **Known pre-existing failure:** `--vision-cover-live-only` asserts prism
+  scale at the *document bottom*, written when vision was the last section.
+  Since the 07-13 pass appended service/stellla/outro, the bottom is the
+  outro and the prism is hidden (scale null). Reproduced on unmodified HEAD
+  e3c15e0. The test needs to target the end of the vision section instead.
+- `--endmark-live-only` passes with the new section heights.
+
 ## Fourth pass (2026-09-26): scroll dynamics vs reference video
 
 Method: `ffmpeg` contact sheets of `Task/参考视频.mp4` (fps=2) vs

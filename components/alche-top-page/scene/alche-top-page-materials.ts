@@ -189,19 +189,24 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
             // (uSceneRefractionMix 0.28) keeps the legacy pale-ice read.
             float bodyMix = smoothstep(0.3, 0.95, sceneRefractionMix);
             if (bodyMix > 0.001) {
-              vec2 frostJitter =
-                (vec2(alcheIceNoise(gl_FragCoord.xy * 0.73), alcheIceNoise(gl_FragCoord.xy * 0.73 + 17.0)) - 0.5) *
-                (0.006 + broadNoise * 0.014);
-              // Lens magnification toward the crystal centre + frost offset.
-              vec2 bodyOffset = clamp(sceneOffset * 2.4 - paneUv * 0.05, vec2(-0.08), vec2(0.08));
+              // Smooth low-frequency warp in the crystal's own uv space: the
+              // reference glass bends what is behind it into soft waves (zebra
+              // stripes visibly ripple). Screen-space per-pixel jitter read as
+              // speckle noise, so it is gone.
+              vec2 warpField = vec2(
+                alcheIceFbm(iceUv * 4.6 + vec2(3.1, 1.7)),
+                alcheIceFbm(iceUv * 4.6 + vec2(17.3, 9.2))
+              ) - 0.5;
+              vec2 frostJitter = warpField * 0.012;
+              vec2 bodyOffset = clamp(sceneOffset * 1.6 + warpField * 0.1 - paneUv * 0.04, vec2(-0.1), vec2(0.1));
               vec3 refrA = texture2D(uSceneTexture, clamp(screenUv + bodyOffset + frostJitter, vec2(0.001), vec2(0.999))).rgb;
-              vec3 refrB = texture2D(uSceneTexture, clamp(screenUv + bodyOffset * 1.4 - frostJitter * 1.7, vec2(0.001), vec2(0.999))).rgb;
+              vec3 refrB = texture2D(uSceneTexture, clamp(screenUv + bodyOffset * 1.12 - frostJitter, vec2(0.001), vec2(0.999))).rgb;
               vec3 refracted = (refrA + refrB) * 0.5;
               float refrLum = dot(refracted, vec3(0.2126, 0.7152, 0.0722));
               vec3 violet = mix(vec3(0.62, 0.62, 0.68), vec3(0.3, 0.13, 0.95), clamp(uVioletMix, 0.0, 1.0));
               vec3 body = refracted * mix(vec3(1.0), violet * 1.25, 0.78) * 1.35 + violet * 0.05;
-              float frostMask = smoothstep(0.2, 0.8, refrLum) * smoothstep(0.35, 0.9, broadNoise + grainNoise * 0.4);
-              body = mix(body, vec3(refrLum * 1.1) + violet * 0.08, frostMask * 0.5);
+              float frostMask = smoothstep(0.25, 0.85, refrLum) * smoothstep(0.45, 0.82, broadNoise);
+              body = mix(body, vec3(refrLum * 1.1) + violet * 0.08, frostMask * 0.4);
               body += vec3(0.75, 0.72, 1.0) * refractionCaustic * 0.03;
               // Glass lift: the crystal body sits a touch brighter than the
               // wall seen through the hole so the frame reads as a solid.
@@ -718,17 +723,20 @@ export function createPrismSideRainbowMaterial(uniforms?: PrismSideRainbowUnifor
           vModelPos.x * 0.08 +
           warp +
           uTime * 0.028;
-        // Narrow the sweep to a soft cyan -> violet -> pink iridescence.
-        float hue = fract(0.42 + sin(hueDrift * 2.4) * 0.21);
+        // Reference vision slab (video 15.0-16.0s): a vivid full-spectrum
+        // gradient running along the face (red/orange at one end through
+        // yellow, green, cyan to blue/violet), with soft glossy streaks.
+        float hue = fract(0.02 + vUv.y * 0.55 + vModelPos.y * 0.16 + warp * 0.6 + uTime * 0.02);
 
         float band = sin((vModelPos.y * 2.2 - vModelPos.x * 1.05) * 2.6 + uTime * 0.9) * 0.5 + 0.5;
         float grain = hash21(gl_FragCoord.xy * 0.91 + vec2(uTime * 24.0, uTime * 16.0));
-        float sparkle = smoothstep(0.76, 0.995, grain) * (0.16 + uRainbowMix * 0.1);
-        float saturation = mix(0.34, 0.58, uRainbowMix);
-        float value = 0.8 + band * 0.1 + fresnel * 0.14 + sparkle * 0.18;
+        float sparkle = smoothstep(0.86, 0.995, grain) * (0.08 + uRainbowMix * 0.06);
+        float saturation = mix(0.55, 0.86, uRainbowMix);
+        float value = 0.9 + band * 0.08 + fresnel * 0.08 + sparkle * 0.12;
 
         vec3 rainbow = hsv2rgb(vec3(hue, saturation, min(value, 1.0)));
-        rainbow = mix(rainbow, vec3(0.985, 0.985, 1.0), 0.06 + fresnel * 0.05);
+        float gloss = smoothstep(0.82, 0.98, sin((vModelPos.y * 1.3 + vModelPos.x * 2.2) * 3.0 + uTime * 0.35) * 0.5 + 0.5);
+        rainbow = mix(rainbow, vec3(0.985, 0.985, 1.0), 0.04 + fresnel * 0.05 + gloss * 0.35);
 
         // Reference vision slab: as the face covers the viewport it turns into
         // a heavily dithered monochrome-noise panel with rainbow smears.

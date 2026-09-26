@@ -16,6 +16,7 @@ let outDir = ".playwright-artifacts/dev-shots";
 let width = 1600;
 let height = 842;
 let settleMs = 2500;
+let mouse = null; // [xRatio, yRatio] of the viewport, moved to before settling
 const shots = [];
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
@@ -23,6 +24,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--out-dir") outDir = argv[++i];
   else if (arg === "--viewport") [width, height] = argv[++i].split("x").map(Number);
   else if (arg === "--settle-ms") settleMs = Number(argv[++i]);
+  else if (arg === "--mouse") mouse = argv[++i].split(",").map(Number);
   else {
     const eq = arg.indexOf("=");
     shots.push({ name: arg.slice(0, eq), query: arg.slice(eq + 1) });
@@ -42,6 +44,11 @@ try {
     const url = `${base}${joiner}${shot.query}${shot.query.includes("alcheHideDebugUi") ? "" : "&alcheHideDebugUi=1"}`;
     await page.goto(url, { waitUntil: "networkidle", timeout: 180000 });
     await page.waitForSelector("canvas", { state: "attached", timeout: 90000 });
+    if (mouse) {
+      await page.waitForTimeout(1500);
+      await page.mouse.move(width * 0.5, height * 0.5);
+      await page.mouse.move(width * mouse[0], height * mouse[1], { steps: 12 });
+    }
     await page.waitForTimeout(settleMs);
     const debug = await page.evaluate(() => {
       const layer = window.__getAlcheLayerDebugState?.() ?? null;

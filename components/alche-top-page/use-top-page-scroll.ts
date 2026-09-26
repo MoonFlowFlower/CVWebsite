@@ -285,7 +285,10 @@ function getVisionCoverProgress(sectionRefs: Record<AlcheScrollableSectionId, HT
 
   const viewportLine = window.innerHeight * ALCHE_TOP_SCROLL_TUNING.activeViewport;
   const start = getAbsoluteTop(vision) - viewportLine;
-  const end = Math.max(getAbsoluteTop(vision) + vision.offsetHeight - window.innerHeight, start + 1);
+  // Finish the cover as vision leaves the active viewport line (not a full
+  // viewport earlier), so the rainbow flood runs right up to the service cut
+  // instead of leaving a viewport of empty scroll behind it.
+  const end = Math.max(getAbsoluteTop(vision) + vision.offsetHeight - viewportLine, start + 1);
   return clamp01((window.scrollY - start) / Math.max(end - start, 1));
 }
 

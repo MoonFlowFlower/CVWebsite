@@ -73,12 +73,22 @@ try {
     await page.waitForTimeout(options.settleMs);
     const state = await page.evaluate(() => {
       const layer = window.__getAlcheLayerDebugState?.() ?? null;
-      return { scrollY: window.scrollY, section: layer?.activeSection ?? null };
+      const edge = window.__getAlcheEdgeOverlayLayerDebugState?.() ?? null;
+      const round = (v) => (typeof v === "number" ? Number(v.toFixed(3)) : v ?? null);
+      return {
+        scrollY: window.scrollY,
+        section: layer?.sceneActiveSection ?? layer?.activeSection ?? null,
+        missionTurn: round(layer?.missionTurnProgress),
+        visionCover: round(layer?.visionCoverProgress),
+        prismScale: round(edge?.prismGroupScale ?? layer?.prismGroupScale),
+        rainbow: round(edge?.prismRainbowOpacity ?? layer?.prismRainbowOpacity),
+        edgeOpacity: round(edge?.prismEdgeOpacity),
+      };
     });
     const file = `frame-${String(index).padStart(2, "0")}.png`;
     await page.screenshot({ path: path.join(outDir, file) });
     records.push({ file, t: Number(t.toFixed(4)), ...state });
-    console.log(`${file} t=${t.toFixed(3)} y=${state.scrollY} section=${state.section}`);
+    console.log(`${file} t=${t.toFixed(3)} ${JSON.stringify(state)}`);
   }
   fs.writeFileSync(path.join(outDir, "frames.json"), JSON.stringify({ url: options.url, scrollMax, records }, null, 2));
 } finally {
