@@ -321,6 +321,11 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       uExposure: { value: 1 },
       uFlatten: { value: 0 },
       uZebra: { value: 0 },
+      // Lead works poster echoed on the LED wall during works_cards.
+      uPosterA: { value: null as THREE.Texture | null },
+      uPosterB: { value: null as THREE.Texture | null },
+      uPosterBlend: { value: 0 },
+      uPosterMix: { value: 0 },
       uSceneFade: { value: 1 },
       uWallRadius: { value: 5 },
       uWallHalfWidth: { value: 11 },
@@ -367,6 +372,10 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       uniform float uExposure;
       uniform float uFlatten;
       uniform float uZebra;
+      uniform sampler2D uPosterA;
+      uniform sampler2D uPosterB;
+      uniform float uPosterBlend;
+      uniform float uPosterMix;
       uniform float uSceneFade;
       uniform vec2 uViewportPx;
 
@@ -474,6 +483,36 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
           vec3 zebraColor = mix(vec3(0.0025), vec3(0.3, 0.3, 0.31), zebraLevel);
           zebraColor += vec3(0.011, 0.011, 0.016) * microGrid;
           darkColor = mix(darkColor, zebraColor, zebraMix);
+        }
+
+        // Works-cards LED content (reference 9.5-11s): the lead poster fills
+        // the visible wall, heavily blurred (mip bias) and dim, lit through
+        // the LED dot lattice so the tiles stay readable over it.
+        float posterMix = clamp(uPosterMix, 0.0, 1.0);
+        if (posterMix > 0.001) {
+          // Only the central ~60% of the wall uv is on screen.
+          vec2 posterUv = clamp((uv - 0.5) * vec2(1.75, 2.0) + 0.5, vec2(0.0), vec2(1.0));
+          // 13-tap disc blur on top of a mip bias: the reference reads as a
+          // soft colour smear, never as legible poster detail.
+          vec3 posterA = vec3(0.0);
+          vec3 posterB = vec3(0.0);
+          for (int i = 0; i < 13; i++) {
+            float fi = float(i);
+            float ring = i == 0 ? 0.0 : (i < 7 ? 0.018 : 0.04);
+            float ang = fi * 2.39996;
+            vec2 tapUv = clamp(posterUv + vec2(cos(ang), sin(ang)) * ring, vec2(0.0), vec2(1.0));
+            posterA += texture2D(uPosterA, tapUv, 3.0).rgb;
+            posterB += texture2D(uPosterB, tapUv, 3.0).rgb;
+          }
+          posterA /= 13.0;
+          posterB /= 13.0;
+          vec3 posterColor = mix(posterA, posterB, smoothstep(0.0, 1.0, clamp(uPosterBlend, 0.0, 1.0)));
+          // Tame saturation a little so bright posters don't flood the room.
+          float posterLum = dot(posterColor, vec3(0.2126, 0.7152, 0.0722));
+          posterColor = mix(vec3(posterLum), posterColor, 0.8);
+          float posterLed = 0.5 + dotField * 0.6;
+          vec3 posterWall = posterColor * 0.16 * posterLed * (0.8 + tileLevel * 0.2);
+          darkColor = mix(darkColor, posterWall + darkBase, posterMix * 0.92);
         }
 
         darkColor = mix(darkColor, darkSeamColor, frameGrid * 0.94);

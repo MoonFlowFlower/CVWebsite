@@ -4,6 +4,23 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Ninth pass (2026-09-27): LED wall echoes the lead poster (reference 9.5-11s)
+
+- `WorksCardPair` writes a shared `wallMediaRef` each frame (`from`/`to`
+  card index, `blend` = the same handoff mix that swaps the lead card,
+  `strength` = cards visible, fading with the works_outro clear);
+  `CurvedMediaWall` reads it and binds the poster textures (same URLs, so
+  `useLoader` returns the cached textures).
+- Wall shader (`uPosterA/B`, `uPosterBlend`, `uPosterMix`): poster mapped
+  over the visible central wall uv, 13-tap disc blur + mip bias 3,
+  saturation 0.8, linear gain 0.16, modulated by the LED dot lattice; seams
+  and `+` markers stay on top. Tuned against 滚动stage8 (0.2 gain was too
+  bright/sharp, 0.075 invisible).
+- `--works-outro-live-only` fails on HEAD too (right-edge "black ratio"
+  0.19-0.25 <= 0.03). The screenshot shows no gap: the edge is the dark LED
+  wall. The heuristic dates from the light-wall era and needs retuning for
+  the dark direction.
+
 ## Eighth pass (2026-09-26): mission line-art logo (滚动stage6 / video 15.0s)
 
 - Edge overlay now draws fat white lines (`LineMaterial` + `LineSegments2`;

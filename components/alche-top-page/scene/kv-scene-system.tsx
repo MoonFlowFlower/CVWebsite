@@ -62,9 +62,20 @@ interface KvSceneSystemProps {
   layerDebugRef?: { current: AlcheLayerDebugState };
 }
 
+/** Written by WorksCardPair each frame, read by the LED wall: which poster
+ * leads (and which one it is handing off to) so the wall can echo it. */
+interface WallMediaState {
+  from: number;
+  to: number;
+  blend: number;
+  strength: number;
+}
+
 interface CurvedMediaWallProps {
   sceneState: AlcheTopSceneState;
   wallTexturePath: string;
+  worksCardItems: KvSceneSystemProps["worksCardItems"];
+  wallMediaRef: { current: WallMediaState };
   layerDebugRef?: { current: AlcheLayerDebugState };
 }
 
@@ -388,9 +399,12 @@ function createParametricWallGeometry() {
   return geometry;
 }
 
-function CurvedMediaWall({ sceneState, wallTexturePath, layerDebugRef }: CurvedMediaWallProps) {
+function CurvedMediaWall({ sceneState, wallTexturePath, worksCardItems, wallMediaRef, layerDebugRef }: CurvedMediaWallProps) {
   const roomRef = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>(null);
   const wallTexture = useLoader(THREE.TextureLoader, wallTexturePath);
+  // Same URLs as WorksCardPair, so useLoader returns the cached textures.
+  const posterPaths = useMemo(() => worksCardItems.map((item) => assetPath(item.imageSrc)), [worksCardItems]);
+  const posterTextures = useLoader(THREE.TextureLoader, posterPaths);
   const material = useMemo(() => createCurvedGridMaterial(wallTexture), [wallTexture]);
   const effectiveRadius = ALCHE_TOP_MEDIA_WALL.radius / ALCHE_TOP_KV_WALL_ARC_STRENGTH;
   const geometry = useMemo(() => createParametricWallGeometry(), []);
@@ -429,6 +443,13 @@ function CurvedMediaWall({ sceneState, wallTexturePath, layerDebugRef }: CurvedM
     material.uniforms.uWhiteMix.value = THREE.MathUtils.damp(material.uniforms.uWhiteMix.value, sceneState.kv.wallWhiteMix, 3.4, delta);
     material.uniforms.uFlatten.value = THREE.MathUtils.damp(material.uniforms.uFlatten.value, sceneState.kv.wallFlatten, 3.2, delta);
     material.uniforms.uZebra.value = THREE.MathUtils.damp(material.uniforms.uZebra.value, sceneState.kv.wallZebra, 3.6, delta);
+    const wallMedia = wallMediaRef.current;
+    const posterFrom = posterTextures[Math.min(wallMedia.from, posterTextures.length - 1)];
+    const posterTo = posterTextures[Math.min(wallMedia.to, posterTextures.length - 1)];
+    if (posterFrom) material.uniforms.uPosterA.value = posterFrom;
+    if (posterTo) material.uniforms.uPosterB.value = posterTo;
+    material.uniforms.uPosterBlend.value = wallMedia.blend;
+    material.uniforms.uPosterMix.value = THREE.MathUtils.damp(material.uniforms.uPosterMix.value, wallMedia.strength, 3, delta);
     material.uniforms.uSceneFade.value = THREE.MathUtils.damp(material.uniforms.uSceneFade.value, wallVisible, 3.2, delta);
     material.uniforms.uWallRadius.value = effectiveRadius;
     material.uniforms.uWallHalfWidth.value = effectiveRadius * ALCHE_TOP_WALL_PARAMETRIC_WIDTH_RATIO;
@@ -665,7 +686,10 @@ function WorksCardPair({
   reducedMotion,
   worksWordHandoff,
   layerDebugRef,
-}: Pick<KvSceneSystemProps, "sceneState" | "worksCardItems" | "cardDebugMode" | "reducedMotion" | "worksWordHandoff" | "layerDebugRef">) {
+  wallMediaRef,
+}: Pick<KvSceneSystemProps, "sceneState" | "worksCardItems" | "cardDebugMode" | "reducedMotion" | "worksWordHandoff" | "layerDebugRef"> & {
+  wallMediaRef: { current: WallMediaState };
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const cardRefs = useRef<(THREE.Mesh | null)[]>([]);
   const texturePaths = useMemo(() => worksCardItems.map((item) => assetPath(item.imageSrc)), [worksCardItems]);
@@ -909,6 +933,24 @@ function WorksCardPair({
           : extraHandoffMix >= 0.5
             ? Math.min(cycleIndex + 1, lastIndex)
             : cycleIndex;
+
+    // LED wall echo of the lead poster (reference 9.5-11s): crossfades with
+    // the same handoff that swaps the lead card.
+    const wallMedia = wallMediaRef.current;
+    if (inWorksOutro) {
+      wallMedia.from = lastIndex;
+      wallMedia.to = lastIndex;
+      wallMedia.blend = 0;
+    } else if (cycleIndex === 0) {
+      wallMedia.from = 0;
+      wallMedia.to = 1;
+      wallMedia.blend = segment.phase === "entry" || segment.phase === "queue" ? 0 : handoffMix;
+    } else {
+      wallMedia.from = cycleIndex;
+      wallMedia.to = Math.min(cycleIndex + 1, lastIndex);
+      wallMedia.blend = extraHandoffMix;
+    }
+    wallMedia.strength = cardsVisible ? (inWorksOutro ? 1 - outroMix : 1) : 0;
 
     // Debug slots: slot 0 always mirrors mesh 0; slot 1 mirrors the card that
     // plays the legacy "B" role (last card during works_outro).
@@ -1725,6 +1767,8 @@ function CenterHeroModel({
 }
 
 export function KvSceneSystem(props: KvSceneSystemProps) {
+  const wallMediaRef = useRef<WallMediaState>({ from: 0, to: 0, blend: 0, strength: 0 });
+
   if (props.renderMode === "edge-overlay") {
     return <CenterHeroModel {...props} />;
   }
@@ -1734,6 +1778,8 @@ export function KvSceneSystem(props: KvSceneSystemProps) {
       <CurvedMediaWall
         sceneState={props.sceneState}
         wallTexturePath={props.wallTexturePath}
+        worksCardItems={props.worksCardItems}
+        wallMediaRef={wallMediaRef}
         layerDebugRef={props.layerDebugRef}
       />
       <WallWordSweep {...props} />
@@ -1744,6 +1790,7 @@ export function KvSceneSystem(props: KvSceneSystemProps) {
         reducedMotion={props.reducedMotion}
         worksWordHandoff={props.worksWordHandoff}
         layerDebugRef={props.layerDebugRef}
+        wallMediaRef={wallMediaRef}
       />
       <MoonflowTitle {...props} />
       <CenterHeroModel {...props} />
