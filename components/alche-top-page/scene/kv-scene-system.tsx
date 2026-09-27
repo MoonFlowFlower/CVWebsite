@@ -77,6 +77,30 @@ interface CurvedMediaWallProps {
   worksCardItems: KvSceneSystemProps["worksCardItems"];
   wallMediaRef: { current: WallMediaState };
   layerDebugRef?: { current: AlcheLayerDebugState };
+  animateContent: boolean;
+}
+
+/** Faint giant wordmark tiled across the kv LED wall (alpha mask). */
+function createWallWordmarkTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 2048;
+  canvas.height = 320;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#ffffff";
+    context.font = "800 250px 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("MOONFLOW", canvas.width / 2, canvas.height / 2 + 8);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 interface ScreenBounds {
@@ -438,13 +462,25 @@ function createParametricWallGeometry() {
   return geometry;
 }
 
-function CurvedMediaWall({ sceneState, wallTexturePath, worksCardItems, wallMediaRef, layerDebugRef }: CurvedMediaWallProps) {
+function CurvedMediaWall({
+  sceneState,
+  wallTexturePath,
+  worksCardItems,
+  wallMediaRef,
+  layerDebugRef,
+  animateContent,
+}: CurvedMediaWallProps) {
   const roomRef = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>(null);
   const wallTexture = useLoader(THREE.TextureLoader, wallTexturePath);
   // Same URLs as WorksCardPair, so useLoader returns the cached textures.
   const posterPaths = useMemo(() => worksCardItems.map((item) => assetPath(item.imageSrc)), [worksCardItems]);
   const posterTextures = useLoader(THREE.TextureLoader, posterPaths);
   const material = useMemo(() => createCurvedGridMaterial(wallTexture), [wallTexture]);
+  const wordmarkTexture = useMemo(() => createWallWordmarkTexture(), []);
+  useEffect(() => {
+    material.uniforms.uLogoTex.value = wordmarkTexture;
+    return () => wordmarkTexture.dispose();
+  }, [material, wordmarkTexture]);
   const effectiveRadius = ALCHE_TOP_MEDIA_WALL.radius / ALCHE_TOP_KV_WALL_ARC_STRENGTH;
   const geometry = useMemo(() => createParametricWallGeometry(), []);
 
@@ -482,6 +518,9 @@ function CurvedMediaWall({ sceneState, wallTexturePath, worksCardItems, wallMedi
     material.uniforms.uWhiteMix.value = THREE.MathUtils.damp(material.uniforms.uWhiteMix.value, sceneState.kv.wallWhiteMix, 3.4, delta);
     material.uniforms.uFlatten.value = THREE.MathUtils.damp(material.uniforms.uFlatten.value, sceneState.kv.wallFlatten, 3.2, delta);
     material.uniforms.uZebra.value = THREE.MathUtils.damp(material.uniforms.uZebra.value, sceneState.kv.wallZebra, 3.6, delta);
+    // Palette rotation only when motion is welcome (static violet otherwise,
+    // and in captures so pinned shots are deterministic).
+    material.uniforms.uThemeCycle.value = animateContent ? 1 : 0;
     const wallMedia = wallMediaRef.current;
     const posterFrom = posterTextures[Math.min(wallMedia.from, posterTextures.length - 1)];
     const posterTo = posterTextures[Math.min(wallMedia.to, posterTextures.length - 1)];
@@ -1840,6 +1879,7 @@ export function KvSceneSystem(props: KvSceneSystemProps) {
         worksCardItems={props.worksCardItems}
         wallMediaRef={wallMediaRef}
         layerDebugRef={props.layerDebugRef}
+        animateContent={!props.reducedMotion && !props.captureMode}
       />
       <WallWordSweep {...props} />
       <WorksCardPair

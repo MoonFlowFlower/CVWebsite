@@ -4,6 +4,30 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Fourteenth pass (2026-09-27): kv LED wall on the reference wall model
+
+- Reference wall (from the same shader capture): hundreds of instanced thin
+  panel boxes of mixed sizes/depths bent onto a cylinder; every panel samples
+  ONE full-screen pattern texture at its screen position (so the wall shows a
+  single image), with per-panel random UV glitch shifts and blackouts; a tiled
+  logo texture at ~20%; per-panel edge falloff, LED dot mask, global
+  vignette; glowing panel sides. Patterns are simple noise images (violet with
+  cyan/orange blooms, contour-band zebra, other palettes) that swap over time.
+- Ours (single curved mesh, fragment-only emulation in
+  `createCurvedGridMaterial`, gated by `kvContentMix = (1-zebra)(1-poster)`):
+  mixed-size panel layout from hashed 2x2 merges / 2x2 splits of a 0.6x cell
+  grid with panel-shaped seams; continuous animated fbm pattern
+  (`wallNoise`/`wallFbm`) with ~10% glitch-shifted panels and ~30% blacked-out
+  panels; palettes violet / green / grey contour-stripe zebra rotating every
+  9 s with a staggered left-to-right panel sweep + flash; per-panel falloff,
+  LED dot mask, centre falloff; faint tiled MOONFLOW (`uLogoTex`, canvas
+  texture) with drifting rows. Content is ADDED on top of the panel structure
+  (blacked-out panels keep hairlines/dots, never read as a hole).
+- `uThemeCycle` = animate only when `!reducedMotion && !captureMode` (static
+  violet otherwise, so pinned captures stay deterministic).
+- Not emulated: real per-panel depth offsets and glowing panel sides.
+- Full suite green (41 min).
+
 ## Thirteenth pass (2026-09-27): screen-space transmission crystal
 
 - Studied the reference site's compiled shaders (captured via a WebGL
