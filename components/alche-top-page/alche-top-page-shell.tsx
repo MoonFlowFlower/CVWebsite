@@ -951,7 +951,7 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
                       style={{ transform: `rotateY(${pose.rotateY.toFixed(2)}deg)` }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={assetPath(item.imageSrc)} alt="" loading="lazy" decoding="async" />
+                      <img src={assetPath(item.imageSrc)} alt="" decoding="async" />
                     </div>
                     <div
                       className={styles.servicePanelCopy}
