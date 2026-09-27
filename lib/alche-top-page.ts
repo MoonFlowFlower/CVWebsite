@@ -444,7 +444,9 @@ export const ALCHE_TOP_SECTIONS: readonly AlcheTopSectionDefinition[] = [
   { id: "vision_out", label: "vision_out", groupId: "vision", snapRatio: 1, minHeight: sectionHeight(0.4) },
   { id: "service_in", label: "service_in", groupId: "service", snapRatio: 1, minHeight: sectionHeight(0.5) },
   { id: "service", label: "service", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1.15) },
-  { id: "stellla", label: "stellla", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1.22) },
+  // Taller so the framed stage holds before the outro approach starts
+  // (the endmark trigger lands at stellla progress ~(H - 55vh) / H).
+  { id: "stellla", label: "stellla", groupId: "service", snapRatio: 1, minHeight: sectionHeight(1.8) },
   { id: "outro", label: "outro", groupId: null, snapRatio: 1.5, minHeight: sectionHeight(1.45) },
 ] as const;
 
@@ -893,6 +895,20 @@ export function deriveServiceActiveIndex(progress: number, count: number) {
   const slot = (ALCHE_SERVICE_ITEMS_END - ALCHE_SERVICE_ITEMS_START) / Math.max(count, 1);
   const raw = Math.floor((progress - ALCHE_SERVICE_ITEMS_START) / slot + 0.2);
   return Math.max(0, Math.min(count - 1, raw));
+}
+
+/** Reference 18.9-20.2s stellla stage, driven by stelllaProgress:
+ * - entry: the last service panel ("stellla Platform") grows from its hold
+ *   rect to full-bleed;
+ * - copy: frame, wordmark, sparkle and text arrive once the media fills;
+ * - exit: the whole stage scrolls up like a page block and finishes exactly
+ *   when the endmark triggers (outroApproachProgress 0.98), so no black gap. */
+export function deriveStelllaStage(progress: number, outroApproachProgress: number) {
+  return {
+    entry: smoothstep(remapRange(progress, 0, 0.22)),
+    copy: smoothstep(remapRange(progress, 0.16, 0.34)),
+    exit: smoothstep(remapRange(outroApproachProgress, 0, 0.98)),
+  };
 }
 
 export function deriveWorksWordHandoff(activeSection: AlcheTopSectionId, sectionProgress: number) {

@@ -25,6 +25,7 @@ import {
   deriveServiceActiveIndex,
   deriveServiceEntry,
   deriveServicePanelPose,
+  deriveStelllaStage,
   normalizeTopRuntimeSection,
   type AlcheScrollableSectionId,
   type AlcheTopSectionId,
@@ -321,7 +322,10 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
   const currentShotId = debugOverride?.shotId ?? null;
   const endmarkBlueprintPath = assetPath("/alche-top-page/endmark/alche-wordmark-blueprint.svg");
   const missionGridTexturePath = assetPath("/alche-top-page/mission/mission-grid-tile.png");
-  const endmarkTriggerActive = !endmarkDisabled && outroApproachProgress >= 0.98;
+  // Reference 滚动stage15: the endmark is already underneath while the stellla
+  // block scrolls up, so it triggers as the stellla exit begins (stellla sits
+  // above it until the exit completes).
+  const endmarkTriggerActive = !endmarkDisabled && outroApproachProgress >= 0.12;
   const visibleEndmarkFooterProgress = endmarkDebugState.stage === "settled" ? endmarkFooterProgress : 0;
   const endmarkFooterVisible = visibleEndmarkFooterProgress > 0.01;
   const showShotSelector = !debugUiHidden && !captureMode && currentShotId !== null;
@@ -381,7 +385,8 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
       ? Math.min(1, Math.max(0, (visionCoverProgress - 0.86) / 0.14))
       : 0;
   const servicePanelVisible =
-    (serviceProgress > 0.02 && serviceProgress < 0.97 && !endmarkFooterVisible) || servicePortalMix > 0.01;
+    // Hold until stellla takes over in place (hiding at 97% left a black frame).
+    (serviceProgress > 0.02 && stelllaProgress <= 0.001 && !endmarkFooterVisible) || servicePortalMix > 0.01;
   const serviceOverlayOpacity = serviceProgress > 0.02 ? 1 : servicePortalMix;
   const serviceItems = copy.service.items;
   const serviceEntry = reducedMotion ? 1 : deriveServiceEntry(serviceProgress);
@@ -391,7 +396,17 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
     "--service-progress": serviceProgress.toFixed(4),
     opacity: servicePanelVisible ? serviceOverlayOpacity : 0,
   } as CSSProperties;
-  const stelllaPanelVisible = stelllaProgress > 0.06 && outroApproachProgress < 0.5 && !endmarkFooterVisible;
+  // Starts as soon as stellla begins so its media can take over the last
+  // service panel in place (reference 18.9s).
+  const stelllaStageRaw = deriveStelllaStage(stelllaProgress, outroApproachProgress);
+  const stelllaPanelVisible = stelllaProgress > 0.001 && stelllaStageRaw.exit < 0.999 && !endmarkFooterVisible;
+  const stelllaStage = reducedMotion ? { ...stelllaStageRaw, entry: 1, copy: 1 } : stelllaStageRaw;
+  const stelllaStyle = {
+    "--stellla-entry": stelllaStage.entry.toFixed(4),
+    "--stellla-copy": stelllaStage.copy.toFixed(4),
+    "--stellla-progress": stelllaProgress.toFixed(4),
+    transform: `translate3d(0, ${(-100 * stelllaStage.exit).toFixed(2)}vh, 0)`,
+  } as CSSProperties;
   const missionLightPhase =
     missionPanelProgress > 0.6 && serviceProgress < 0.08 && visionCoverProgress < 0.72 && !endmarkTriggerActive;
   // stellla is a dark stage in the reference; only the mission paper phase flips the shell light.
@@ -957,11 +972,43 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
             className={styles.stelllaOverlay}
             data-visible={stelllaPanelVisible ? "true" : "false"}
             aria-hidden={stelllaPanelVisible ? undefined : "true"}
+            style={stelllaStyle}
           >
-            <p className={styles.serviceOverlayEyebrow}>{copy.stellla.frameLabel}</p>
-            <h3 className={styles.stelllaOverlayWord}>{copy.stellla.eyebrow}</h3>
-            <p className={styles.stelllaOverlayTitle}>{copy.stellla.title}</p>
-            <p className={styles.stelllaOverlayBody}>{copy.stellla.body}</p>
+            {/* Reference 18.9-20.2s: the last service panel grows to a
+                full-bleed dimmed media stage, then the framed wordmark lands. */}
+            <div className={styles.stelllaMedia} aria-hidden="true">
+              <div
+                className={styles.stelllaMediaImage}
+                style={{ backgroundImage: `url(${assetPath(copy.stellla.imageSrc)})` }}
+              />
+              <div className={styles.stelllaMediaDim} />
+            </div>
+            <div className={styles.stelllaStageFrame} aria-hidden="true">
+              <span className={styles.stelllaCorner} data-corner="tl" />
+              <span className={styles.stelllaCorner} data-corner="tr" />
+              <span className={styles.stelllaCorner} data-corner="bl" />
+              <span className={styles.stelllaCorner} data-corner="br" />
+            </div>
+            <div className={styles.stelllaCopy}>
+              <h3 className={styles.stelllaWordmark}>
+                <span className={styles.srOnly}>{copy.stellla.title}</span>
+                <span aria-hidden="true" className={styles.stelllaWordmarkText}>
+                  {copy.stellla.eyebrow}
+                  <svg className={styles.stelllaSparkle} viewBox="0 0 100 100" aria-hidden="true">
+                    <path d="M50 0 C52 38 62 48 100 50 C62 52 52 62 50 100 C48 62 38 52 0 50 C38 48 48 38 50 0 Z" />
+                  </svg>
+                </span>
+                <span aria-hidden="true" className={styles.stelllaArrow}>
+                  (↗)
+                </span>
+              </h3>
+              <p className={styles.stelllaBody}>{copy.stellla.body}</p>
+            </div>
+            <ul className={styles.stelllaSpecs}>
+              {copy.stellla.specs.map((spec) => (
+                <li key={spec}>{spec}</li>
+              ))}
+            </ul>
           </div>
         </div>
 

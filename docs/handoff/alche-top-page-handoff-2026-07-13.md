@@ -4,6 +4,34 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Seventh pass (2026-09-26): stellla stage (reference 18.9-20.2s, 滚动stage13-15)
+
+- DOM shell, scroll-driven via `deriveStelllaStage(stelllaProgress,
+  outroApproachProgress)`:
+  - entry: full-bleed media starts exactly on the last service panel's hold
+    rect (desktop -13vw / 13.5vw-20vh / 0.48; phone overrides in the <=768
+    block) and grows to fill the viewport, slow push-in afterwards;
+  - copy: dim gradient, thin frame with `+` corners, huge lowercase
+    wordmark with a four-point sparkle and decorative `(↗)`, description,
+    spec list bottom-right;
+  - exit: the whole block slides up, driven by `outroApproachProgress`
+    0 -> 0.98.
+- **Endmark trigger moved** from `outroApproachProgress >= 0.98` to `>= 0.12`
+  so the endmark is already underneath while stellla rises (stellla overlay
+  is z-index 11, later in the DOM than `.endmarkOverlay`). stellla hides once
+  its exit completes. `--endmark-live-only` passes.
+- stellla section height 1.22 -> 1.8 (endmark trigger lands at stellla
+  progress ~(H - 55vh)/H; the old height cut the hold short and left black).
+- Service overlay now holds until stellla starts (hiding at serviceProgress
+  0.97 left a black frame).
+- Removed the time-based opacity transition on stellla (it hid the growth
+  and popped in at ~75% of the entry).
+- Data: stellla copy rewritten (the old strings were internal design notes);
+  new `specs` + `imageSrc`, `frameLabel` removed; all four locales.
+- Class-name collisions again: legacy `.stelllaFrame` (height 10rem) exists
+  later in the stylesheet, hence `.stelllaStageFrame`. Before adding shell
+  classes, grep the SCSS for the name.
+
 ## Sixth pass (2026-09-26): Service section (reference 16.25-19.0s)
 
 - Stays in the DOM shell (the 3D scene is pinned to runtime `mission_in`

@@ -98,10 +98,15 @@ export interface AlcheTopPageCopy {
     items: AlcheServiceItem[];
   };
   stellla: {
+    // Wordmark (reference renders it as a huge lowercase logotype).
     eyebrow: string;
+    // Screen-reader heading / one-line summary.
     title: string;
     body: string;
-    frameLabel: string;
+    // Small feature caption in the bottom-right corner of the frame.
+    specs: readonly string[];
+    // Full-bleed background media (continues the last service panel).
+    imageSrc: string;
   };
   outro: {
     eyebrow: string;
@@ -187,6 +192,9 @@ const sharedServiceMeta = [
     imageSrc: "/alche-top-page/works/wear-go-land-poster.png",
   },
 ] as const;
+
+// The stellla stage continues the last service panel ("stellla Platform").
+const stelllaImageSrc = "/alche-top-page/works/wear-go-land-poster.png";
 
 function buildServiceItems(bodies: readonly [string, string, string]): AlcheServiceItem[] {
   return sharedServiceMeta.map((meta, index) => ({ ...meta, body: bodies[index] }));
@@ -294,9 +302,10 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     },
     stellla: {
       eyebrow: "stellla",
-      title: "A branded platform module layered over a deeper spatial scene.",
-      body: "The architectural read stabilizes first; editorial framing arrives after the space is understood.",
-      frameLabel: "Platform frame",
+      title: "stellla — a platform for building virtual spaces.",
+      body: "A reusable platform layer for building virtual spaces, from live shows and fashion events to industrial and civic digital twins. Multi-user presence, avatars, and cross-device delivery come built in.",
+      specs: ["Multi-user sessions", "Avatar customization", "PC / Mobile / VR", "Built on Unreal Engine"],
+      imageSrc: stelllaImageSrc,
     },
     outro: {
       eyebrow: "Outro",
@@ -378,9 +387,10 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     },
     stellla: {
       eyebrow: "stellla",
-      title: "先读到更深的空间，再由品牌化 editorial 模块接管。",
-      body: "必须先建立建筑/场景读数，再进入 `stellla` 的版式层。",
-      frameLabel: "平台框架",
+      title: "stellla —— 虚拟空间构建平台。",
+      body: "可复用的虚拟空间构建平台层：从演出、时装活动，到工业与城市的数字孪生。多人同时在线、虚拟形象与跨终端交付均为内置能力。",
+      specs: ["多人同时在线", "虚拟形象定制", "PC / 移动端 / VR", "基于 Unreal Engine"],
+      imageSrc: stelllaImageSrc,
     },
     outro: {
       eyebrow: "Outro",
@@ -462,9 +472,10 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     },
     stellla: {
       eyebrow: "stellla",
-      title: "より深い空間読解のあとに、ブランド化された editorial モジュールが入る。",
-      body: "まず建築的な読みが必要で、その後に `stellla` の版面が支配する。",
-      frameLabel: "Platform frame",
+      title: "stellla — 仮想空間をつくるためのプラットフォーム。",
+      body: "ライブやファッションイベントから、産業・都市のデジタルツインまで。仮想空間を組み立てるための再利用可能なプラットフォーム層で、多人数同時接続、アバター、マルチデバイス配信を標準で備えています。",
+      specs: ["多人数同時接続", "アバターカスタマイズ", "PC / モバイル / VR", "Unreal Engine ベース"],
+      imageSrc: stelllaImageSrc,
     },
     outro: {
       eyebrow: "Outro",
@@ -546,9 +557,10 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     },
     stellla: {
       eyebrow: "stellla",
-      title: "더 깊은 공간이 먼저 읽히고, 그 뒤에 브랜드형 editorial 모듈이 온다.",
-      body: "건축적 읽기가 먼저 안정되어야 하며, 그 다음 `stellla` 레이어가 들어와야 한다.",
-      frameLabel: "Platform frame",
+      title: "stellla — 가상 공간을 만들기 위한 플랫폼.",
+      body: "라이브 쇼와 패션 이벤트부터 산업·도시 디지털 트윈까지, 가상 공간을 구축하기 위한 재사용 가능한 플랫폼 레이어입니다. 다중 접속, 아바타, 멀티 디바이스 배포를 기본으로 제공합니다.",
+      specs: ["다중 동시 접속", "아바타 커스터마이즈", "PC / 모바일 / VR", "Unreal Engine 기반"],
+      imageSrc: stelllaImageSrc,
     },
     outro: {
       eyebrow: "Outro",

@@ -723,63 +723,172 @@
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* stellla stage (reference 18.9-20.2s). Scroll-driven via inline custom
+   properties: --stellla-entry (media grows from the last service panel),
+   --stellla-copy (frame + wordmark + text). */
 .stelllaOverlay {
-  left: clamp(2rem, 9vw, 9rem);
-  right: clamp(2rem, 6vw, 6rem);
-  top: 18%;
-  bottom: 14%;
-  max-width: none;
-  display: grid;
-  align-content: start;
-  gap: 0.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: clamp(1.4rem, 3.5vw, 3.2rem);
+  inset: 0;
+  overflow: hidden;
+  /* Above the endmark (same z, later in the DOM) so the endmark is revealed
+     underneath as this block scrolls up. */
+  z-index: 11;
+  /* Fully scroll-driven: the media starts exactly on top of the last service
+     panel, so a time-based fade would only hide the growth (it popped in at
+     ~75% of the entry). Slide-up exit is also scroll-driven. */
+  transition: none;
+
+  /* Start rect = the service panel hold rect (left 13vw, top 30vh,
+     width 48vw, 16:9), expressed relative to the viewport centre. */
+  --stellla-from-x: -13vw;
+  --stellla-from-y: calc(13.5vw - 20vh);
+  --stellla-from-scale: 0.48;
 }
 
-.stelllaOverlay .serviceOverlayEyebrow {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.stelllaOverlayWord {
-  position: relative;
-  margin: 0;
-  font-size: clamp(4.2rem, 11vw, 9rem);
-  line-height: 0.92;
-  letter-spacing: -0.045em;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.stelllaOverlayWord::after {
-  /* four-point star accent over the wordmark (reference sparkle) */
-  content: "✦";
+.stelllaMedia {
   position: absolute;
-  top: -0.32em;
-  margin-left: 0.06em;
-  font-size: 0.42em;
-  font-weight: 400;
-  color: #ffffff;
+  inset: 0;
+  overflow: hidden;
+  border-radius: calc((1 - var(--stellla-entry, 1)) * 6px);
+  transform:
+    translate3d(
+      calc(var(--stellla-from-x) * (1 - var(--stellla-entry, 1))),
+      calc(var(--stellla-from-y) * (1 - var(--stellla-entry, 1))),
+      0
+    )
+    scale(calc(var(--stellla-from-scale) + (1 - var(--stellla-from-scale)) * var(--stellla-entry, 1)));
+  transform-origin: 50% 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, calc((1 - var(--stellla-entry, 1)) * 0.16));
 }
 
-.stelllaOverlayTitle {
-  margin: 0.9rem 0 0;
-  max-width: 42rem;
-  font-size: clamp(1.05rem, 1.7vw, 1.35rem);
-  line-height: 1.55;
+.stelllaMediaImage {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  /* Slow push-in while the stage holds. */
+  transform: scale(calc(1.02 + var(--stellla-progress, 0) * 0.1));
+}
+
+.stelllaMediaDim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.18) 60%, rgba(0, 0, 0, 0.36)),
+    rgba(0, 0, 0, 0.12);
+  opacity: var(--stellla-copy, 1);
+}
+
+.stelllaStageFrame {
+  position: absolute;
+  inset: 7vh 3.6vw;
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  border-right: 1px solid rgba(255, 255, 255, 0.28);
+  opacity: var(--stellla-copy, 1);
+}
+
+.stelllaCorner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    background: #fff;
+  }
+
+  &::before {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1.5px;
+    transform: translateY(-50%);
+  }
+
+  &::after {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1.5px;
+    transform: translateX(-50%);
+  }
+
+  &[data-corner="tl"] { left: -18px; top: -18px; }
+  &[data-corner="tr"] { right: -18px; top: -18px; }
+  &[data-corner="bl"] { left: -18px; bottom: -18px; }
+  &[data-corner="br"] { right: -18px; bottom: -18px; }
+}
+
+.stelllaCopy {
+  position: absolute;
+  left: 11vw;
+  top: 32vh;
+  display: grid;
+  gap: 2.4vh;
+  opacity: var(--stellla-copy, 1);
+  transform: translate3d(0, calc((1 - var(--stellla-copy, 1)) * 3vh), 0);
+}
+
+.stelllaWordmark {
+  display: flex;
+  align-items: center;
+  gap: 2.4vw;
+  margin: 0;
+  color: #fff;
+}
+
+.stelllaWordmarkText {
+  position: relative;
+  font-family: "Poppins", "Montserrat", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(4.4rem, 13vw, 17rem);
+  line-height: 0.9;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+.stelllaSparkle {
+  position: absolute;
+  left: 63%;
+  top: -0.42em;
+  width: 0.62em;
+  height: 0.62em;
+  fill: #fff;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.7));
+  transform: rotate(calc(var(--stellla-progress, 0) * 40deg));
+}
+
+.stelllaArrow {
+  font-size: clamp(1.6rem, 3.6vw, 4.2rem);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+.stelllaBody {
+  margin: 0;
+  max-width: min(40vw, 40rem);
+  font-size: clamp(0.92rem, 1.05vw, 1.12rem);
+  line-height: 1.95;
+  letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.92);
 }
 
-.stelllaOverlayBody {
-  margin: 0.4rem 0 0;
-  max-width: 38rem;
-  font-family: "IBM Plex Mono", "Courier New", monospace;
+.stelllaSpecs {
+  position: absolute;
+  right: 7vw;
+  bottom: 11vh;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.2rem;
+  max-width: 16rem;
   font-size: 0.82rem;
-  line-height: 1.65;
-  color: rgba(255, 255, 255, 0.55);
-  justify-self: end;
-  align-self: end;
-  text-align: left;
-  max-width: 22rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
+  opacity: var(--stellla-copy, 1);
 }
 
 .sectionCopy {
@@ -1510,6 +1619,29 @@
 }
 
 @media (max-width: 768px) {
+  /* stellla: phone start rect matches the stacked service panel. */
+  .stelllaOverlay {
+    --stellla-from-x: 0vw;
+    --stellla-from-y: calc(24.75vw - 30vh);
+    --stellla-from-scale: 0.88;
+  }
+
+  .stelllaCopy {
+    left: 8vw;
+    right: 8vw;
+    top: 26vh;
+  }
+
+  .stelllaBody {
+    max-width: none;
+  }
+
+  .stelllaSpecs {
+    left: 8vw;
+    right: auto;
+    bottom: 10vh;
+  }
+
   /* Service: stack the panel above its copy column on phones. */
   .servicePanelMedia {
     left: 6vw;
