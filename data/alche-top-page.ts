@@ -144,7 +144,7 @@ const sharedWorks = [
     title: "KizunaAI “Hello, Fortnite”",
     subtitle: "In-game concert / spatial runtime",
     categories: ["fortnite", "metaverse", "concert"],
-    imageSrc: "/alche-top-page/works/kizunaai-poster.png",
+    imageSrc: "/alche-top-page/works/kizunaai-poster.jpg",
   },
   {
     code: "WK-02",
@@ -152,7 +152,7 @@ const sharedWorks = [
     title: "WEAR GO LAND",
     subtitle: "Fashion metaverse / mobile + unreal",
     categories: ["stellla", "mobile", "unreal"],
-    imageSrc: "/alche-top-page/works/wear-go-land-poster.png",
+    imageSrc: "/alche-top-page/works/wear-go-land-poster.jpg",
   },
   {
     code: "WK-03",
@@ -160,7 +160,7 @@ const sharedWorks = [
     title: "DISCOAT 2025SS EXHIBITION",
     subtitle: "Virtual exhibition / cloud rendered spatial retail",
     categories: ["fashion", "cloud", "metaverse"],
-    imageSrc: "/alche-top-page/works/discoat-poster.png",
+    imageSrc: "/alche-top-page/works/discoat-poster.jpg",
   },
   {
     code: "WK-04",
@@ -183,18 +183,18 @@ const sharedServiceMeta = [
     code: "SV-02",
     title: "Unreal Engine Works",
     badge: "UNREAL ENGINE",
-    imageSrc: "/alche-top-page/works/discoat-poster.png",
+    imageSrc: "/alche-top-page/works/discoat-poster.jpg",
   },
   {
     code: "SV-03",
     title: "stellla Platform",
     badge: "stellla",
-    imageSrc: "/alche-top-page/works/wear-go-land-poster.png",
+    imageSrc: "/alche-top-page/works/wear-go-land-poster.jpg",
   },
 ] as const;
 
 // The stellla stage continues the last service panel ("stellla Platform").
-const stelllaImageSrc = "/alche-top-page/works/wear-go-land-poster.png";
+const stelllaImageSrc = "/alche-top-page/works/wear-go-land-poster.jpg";
 
 function buildServiceItems(bodies: readonly [string, string, string]): AlcheServiceItem[] {
   return sharedServiceMeta.map((meta, index) => ({ ...meta, body: bodies[index] }));
