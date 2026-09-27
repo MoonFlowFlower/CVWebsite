@@ -941,9 +941,11 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
                     data-active={index === serviceActiveIndex ? "true" : "false"}
                     aria-hidden={onStage ? undefined : "true"}
                     style={{
+                      // Opacity only (no visibility:hidden): queued slides stay
+                      // rasterised so their image is ready the frame they enter
+                      // (hidden slides revealed as a black box on GitHub Pages).
                       opacity: pose.opacity,
                       transform: `translate3d(${pose.x.toFixed(2)}vw, 0, 0)`,
-                      visibility: onStage ? "visible" : "hidden",
                     }}
                   >
                     <div
@@ -951,7 +953,7 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
                       style={{ transform: `rotateY(${pose.rotateY.toFixed(2)}deg)` }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={assetPath(item.imageSrc)} alt="" decoding="async" />
+                      <img src={assetPath(item.imageSrc)} alt="" decoding="sync" />
                     </div>
                     <div
                       className={styles.servicePanelCopy}
