@@ -3187,11 +3187,16 @@ async function run() {
           viewport: { width: 2560, height: 1600 },
           fileSuffix: "-desktop-16x10",
         });
-        await captureVisionCoverLiveEndState(browser, {
-          viewport: ultraWideViewport,
-          fileSuffix: "-desktop-2000x1080",
-          disableEndmark: true,
-        });
+        // Fresh browser like --vision-cover-live-only: after every fixed shot
+        // the long-lived browser renders the heavy kv (3D panels + crystal
+        // transmission) too slowly to report intro-ready within 12s.
+        await withFreshBrowser((freshBrowser) =>
+          captureVisionCoverLiveEndState(freshBrowser, {
+            viewport: ultraWideViewport,
+            fileSuffix: "-desktop-2000x1080",
+            disableEndmark: true,
+          }),
+        );
         // Same as --endmark-live-only: the endmark timeline is time-based and its
         // short "black" stage is missed in the long-lived browser that already
         // rendered every fixed shot, so each stage gets a fresh browser.
@@ -3200,7 +3205,7 @@ async function run() {
           fileSuffix: "-desktop-2000x1080",
           freshBrowserPerStage: true,
         });
-        await capturePointerInteraction(browser);
+        await withFreshBrowser((freshBrowser) => capturePointerInteraction(freshBrowser));
       }
       await writeReferenceBoard(layerStates);
     } finally {

@@ -34,6 +34,7 @@ import {
 } from "@/lib/alche-top-page";
 import {
   createCurvedGridMaterial,
+  createWallPanelMaterial,
   createPrismIceMaterial,
   type PrismIceUniforms,
   createMaskedPrismLineArtMaterial,
@@ -462,6 +463,83 @@ function createParametricWallGeometry() {
   return geometry;
 }
 
+/**
+ * Mixed-size LED panel layout in wall-parameter space ([-1, 1] per axis),
+ * deterministic: some 2x2 cell blocks merge into one big panel, some cells
+ * split into four small ones. Returns per-instance rect (a0, b0, a1, b1) and
+ * info (idX, idY, depth, 0).
+ */
+function createWallPanelLayout(halfWidth: number, halfHeight: number) {
+  let seed = 0x5eed1234;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const span = 0.86;
+  const columns = 14;
+  const rows = 8;
+  const cellA = (span * 2) / columns;
+  const cellB = (span * 2) / rows;
+  // ~0.05 world units of gap on each side of a panel.
+  const gapA = 0.05 / halfWidth;
+  const gapB = 0.05 / halfHeight;
+  const used = Array.from({ length: rows }, () => new Array<boolean>(columns).fill(false));
+  const rects: number[] = [];
+  const infos: number[] = [];
+  const pushPanel = (a0: number, b0: number, a1: number, b1: number, id: number) => {
+    rects.push(a0 + gapA, b0 + gapB, a1 - gapA, b1 - gapB);
+    // Mostly shallow, a few pushed well forward (reference depth variety).
+    const depth = 0.02 + Math.pow(random(), 2.2) * 0.32;
+    infos.push(id % 97, Math.floor(id / 97), depth, 0);
+  };
+  let id = 1;
+  for (let row = 0; row + 1 < rows; row += 2) {
+    for (let column = 0; column + 1 < columns; column += 2) {
+      if (random() < 0.24) {
+        used[row][column] = used[row][column + 1] = used[row + 1][column] = used[row + 1][column + 1] = true;
+        const a0 = -span + column * cellA;
+        const b0 = -span + row * cellB;
+        pushPanel(a0, b0, a0 + cellA * 2, b0 + cellB * 2, id);
+        id += 1;
+      }
+    }
+  }
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      if (used[row][column]) continue;
+      const a0 = -span + column * cellA;
+      const b0 = -span + row * cellB;
+      if (random() < 0.2) {
+        for (let sub = 0; sub < 4; sub += 1) {
+          const sa = a0 + (sub % 2) * cellA * 0.5;
+          const sb = b0 + Math.floor(sub / 2) * cellB * 0.5;
+          pushPanel(sa, sb, sa + cellA * 0.5, sb + cellB * 0.5, id);
+          id += 1;
+        }
+      } else {
+        pushPanel(a0, b0, a0 + cellA, b0 + cellB, id);
+        id += 1;
+      }
+    }
+  }
+  return { rects: new Float32Array(rects), infos: new Float32Array(infos), count: rects.length / 4 };
+}
+
+function createWallPanelGeometry(halfWidth: number, halfHeight: number) {
+  const layout = createWallPanelLayout(halfWidth, halfHeight);
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.index = box.index;
+  geometry.setAttribute("position", box.getAttribute("position"));
+  geometry.setAttribute("normal", box.getAttribute("normal"));
+  geometry.setAttribute("aPanelRect", new THREE.InstancedBufferAttribute(layout.rects, 4));
+  geometry.setAttribute("aPanelInfo", new THREE.InstancedBufferAttribute(layout.infos, 4));
+  geometry.instanceCount = layout.count;
+  return geometry;
+}
+
 function CurvedMediaWall({
   sceneState,
   wallTexturePath,
@@ -477,10 +555,46 @@ function CurvedMediaWall({
   const posterTextures = useLoader(THREE.TextureLoader, posterPaths);
   const material = useMemo(() => createCurvedGridMaterial(wallTexture), [wallTexture]);
   const wordmarkTexture = useMemo(() => createWallWordmarkTexture(), []);
+  const panelMaterial = useMemo(() => createWallPanelMaterial(), []);
+  const panelGeometry = useMemo(() => {
+    const radius = ALCHE_TOP_MEDIA_WALL.radius / ALCHE_TOP_KV_WALL_ARC_STRENGTH;
+    return createWallPanelGeometry(
+      radius * ALCHE_TOP_WALL_PARAMETRIC_WIDTH_RATIO,
+      ALCHE_TOP_MEDIA_WALL.height * 0.5 * ALCHE_TOP_WALL_PARAMETRIC_HEIGHT_RATIO,
+    );
+  }, []);
+  const panelsRef = useRef<THREE.Mesh>(null);
+  // Window-level pointer (the DOM shell covers the canvas), NDC, +y up.
+  const panelPointerRef = useRef({ x: 0, y: 0, active: 0 });
   useEffect(() => {
     material.uniforms.uLogoTex.value = wordmarkTexture;
+    panelMaterial.uniforms.uLogoTex.value = wordmarkTexture;
     return () => wordmarkTexture.dispose();
-  }, [material, wordmarkTexture]);
+  }, [material, panelMaterial, wordmarkTexture]);
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      panelPointerRef.current.x = (event.clientX / Math.max(window.innerWidth, 1)) * 2 - 1;
+      panelPointerRef.current.y = -((event.clientY / Math.max(window.innerHeight, 1)) * 2 - 1);
+      panelPointerRef.current.active = 1;
+    };
+    const handlePointerLeave = () => {
+      panelPointerRef.current.active = 0;
+    };
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", handlePointerLeave);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      document.documentElement.removeEventListener("pointerleave", handlePointerLeave);
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      panelGeometry.dispose();
+      panelMaterial.dispose();
+    },
+    [panelGeometry, panelMaterial],
+  );
   const effectiveRadius = ALCHE_TOP_MEDIA_WALL.radius / ALCHE_TOP_KV_WALL_ARC_STRENGTH;
   const geometry = useMemo(() => createParametricWallGeometry(), []);
 
@@ -521,6 +635,36 @@ function CurvedMediaWall({
     // Palette rotation only when motion is welcome (static violet otherwise,
     // and in captures so pinned shots are deterministic).
     material.uniforms.uThemeCycle.value = animateContent ? 1 : 0;
+
+    // 3D panels carry the kv content wherever the backing wall would show it
+    // (not over the works zebra / poster echo / mission paper), fading and
+    // flattening in step with the wall.
+    const panelVisibility =
+      material.uniforms.uIntro.value *
+      material.uniforms.uSceneFade.value *
+      (1 - THREE.MathUtils.smoothstep(material.uniforms.uZebra.value, 0, 1)) *
+      (1 - THREE.MathUtils.clamp(material.uniforms.uPosterMix.value, 0, 1)) *
+      (1 - THREE.MathUtils.smoothstep(material.uniforms.uWhiteMix.value, 0, 1));
+    material.uniforms.uPanelCover.value = panelVisibility;
+    const panelUniforms = panelMaterial.uniforms;
+    panelUniforms.uTime.value = state.clock.elapsedTime;
+    panelUniforms.uThemeCycle.value = animateContent ? 1 : 0;
+    panelUniforms.uVisibility.value = panelVisibility;
+    panelUniforms.uExposure.value = material.uniforms.uExposure.value;
+    panelUniforms.uFlatten.value = material.uniforms.uFlatten.value;
+    panelUniforms.uAspect.value = state.size.width / Math.max(state.size.height, 1);
+    const pointer = panelPointerRef.current;
+    panelUniforms.uPointer.value.set(pointer.x, pointer.y);
+    panelUniforms.uPointerActive.value = THREE.MathUtils.damp(
+      panelUniforms.uPointerActive.value,
+      animateContent ? pointer.active : 0,
+      3,
+      delta,
+    );
+    if (panelsRef.current) {
+      panelsRef.current.visible = panelVisibility > 0.002;
+      panelsRef.current.rotation.y = roomRef.current.rotation.y;
+    }
     const wallMedia = wallMediaRef.current;
     const posterFrom = posterTextures[Math.min(wallMedia.from, posterTextures.length - 1)];
     const posterTo = posterTextures[Math.min(wallMedia.to, posterTextures.length - 1)];
@@ -532,6 +676,9 @@ function CurvedMediaWall({
     material.uniforms.uWallRadius.value = effectiveRadius;
     material.uniforms.uWallHalfWidth.value = effectiveRadius * ALCHE_TOP_WALL_PARAMETRIC_WIDTH_RATIO;
     material.uniforms.uWallHalfHeight.value = ALCHE_TOP_MEDIA_WALL.height * 0.5 * ALCHE_TOP_WALL_PARAMETRIC_HEIGHT_RATIO;
+    panelMaterial.uniforms.uWallRadius.value = material.uniforms.uWallRadius.value;
+    panelMaterial.uniforms.uWallHalfWidth.value = material.uniforms.uWallHalfWidth.value;
+    panelMaterial.uniforms.uWallHalfHeight.value = material.uniforms.uWallHalfHeight.value;
     material.uniforms.uViewportPx.value.set(state.size.width, state.size.height);
     if (layerDebugRef) {
       const worldPosition = roomRef.current.getWorldPosition(new THREE.Vector3());
@@ -541,9 +688,21 @@ function CurvedMediaWall({
   });
 
   return (
-    <mesh ref={roomRef} geometry={geometry} position={[0, 0, ALCHE_TOP_MEDIA_WALL.worldZ]} frustumCulled={false}>
-      <primitive object={material} attach="material" />
-    </mesh>
+    <>
+      <mesh ref={roomRef} geometry={geometry} position={[0, 0, ALCHE_TOP_MEDIA_WALL.worldZ]} frustumCulled={false} renderOrder={0}>
+        <primitive object={material} attach="material" />
+      </mesh>
+      <mesh
+        ref={panelsRef}
+        geometry={panelGeometry}
+        position={[0, 0, ALCHE_TOP_MEDIA_WALL.worldZ]}
+        frustumCulled={false}
+        renderOrder={1}
+        visible={false}
+      >
+        <primitive object={panelMaterial} attach="material" />
+      </mesh>
+    </>
   );
 }
 

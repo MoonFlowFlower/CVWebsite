@@ -359,6 +359,99 @@ export function createWorksPosterMaterial(map: THREE.Texture, uniforms: WorksPos
   return material;
 }
 
+/**
+ * kv LED wall content shared by the curved backing wall and the instanced 3D
+ * panels (layout studied from the reference wall; own implementation): one
+ * continuous animated pattern across all panels, per-panel glitch shifts and
+ * blackouts, palette rotation (violet / green / grey contour stripes) with a
+ * staggered panel sweep, per-panel edge falloff, LED dot mask, centre falloff
+ * and a faint tiled wordmark.
+ */
+export const ALCHE_WALL_KV_GLSL = /* glsl */ `
+  float wallHash21(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+  }
+
+  float wallNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(wallHash21(i), wallHash21(i + vec2(1.0, 0.0)), f.x),
+      mix(wallHash21(i + vec2(0.0, 1.0)), wallHash21(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+
+  float wallFbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.55;
+    for (int i = 0; i < 4; i++) {
+      v += wallNoise(p) * a;
+      p = p * 2.03 + vec2(3.1, 1.7);
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // uv: wall uv [0,1]; panelLocal: uv inside the panel [0,1].
+  vec3 alcheKvWallContent(vec2 uv, vec2 panelId, vec2 panelLocal, float dotMask, float time, float cycle, sampler2D logoTex) {
+    float panelHash = wallHash21(panelId + vec2(8.2, 2.4));
+    float kvCycle = clamp(cycle, 0.0, 1.0);
+    float themeClock = time / 9.0;
+    float themeNow = mod(floor(themeClock), 3.0) * kvCycle;
+    float themeNext = mod(floor(themeClock) + 1.0, 3.0) * kvCycle;
+    float sweep01 = clamp((fract(themeClock) * 9.0 - 7.6) / 1.4, 0.0, 1.0);
+    float sweepAt = panelHash * 0.45 + uv.x * 0.55;
+    float switched = step(sweepAt, sweep01) * step(0.001, sweep01);
+    float panelTheme = mix(themeNow, themeNext, switched);
+    float switchFlash = exp(-abs(sweep01 - sweepAt) * 40.0) * step(0.001, sweep01) * kvCycle;
+
+    float glitchOn = step(0.9, wallHash21(panelId + vec2(floor(time * 0.7), 5.0)));
+    vec2 glitch = (vec2(wallHash21(panelId + 11.0), wallHash21(panelId + 23.0)) - 0.5) * 0.14 * glitchOn;
+    vec2 contentUv = uv + glitch;
+    float nA = wallFbm(contentUv * vec2(4.2, 3.0) + vec2(time * 0.035, -time * 0.022));
+    float nB = wallFbm(contentUv * vec2(3.0, 2.3) + vec2(-time * 0.028, time * 0.02) + 7.3);
+    float nC = wallFbm(contentUv * vec2(5.2, 3.9) + vec2(time * 0.02, time * 0.032) + 13.1);
+
+    vec3 content;
+    if (panelTheme < 0.5) {
+      // Deep saturated blue-violet; rare cyan / orange blooms.
+      content = vec3(0.045, 0.012, 0.36) * (0.12 + smoothstep(0.25, 0.85, nA) * 1.1);
+      content += vec3(0.02, 0.2, 0.45) * smoothstep(0.7, 0.9, nB) * 0.35;
+      content += vec3(0.7, 0.16, 0.02) * smoothstep(0.74, 0.94, nC) * 0.35;
+    } else if (panelTheme < 1.5) {
+      content = vec3(0.015, 0.2, 0.06) * (0.12 + smoothstep(0.25, 0.85, nA) * 1.1);
+      content += vec3(0.1, 0.35, 0.25) * smoothstep(0.7, 0.9, nB) * 0.4;
+    } else {
+      // Curvy contour stripes of a smooth low-frequency field.
+      float contourField = wallNoise(contentUv * 2.6 + vec2(time * 0.03, 0.0)) * 0.65
+        + wallNoise(contentUv * 5.1 + vec2(0.0, time * 0.025) + 4.0) * 0.35;
+      float band = smoothstep(0.4, 0.6, fract(contourField * 9.0 - time * 0.05));
+      content = mix(vec3(0.008), vec3(0.24, 0.24, 0.26), band);
+    }
+    float panelOff = step(wallHash21(panelId + vec2(41.0, panelTheme * 17.0)), 0.3);
+    content *= mix(1.0, 0.05, panelOff);
+    content *= 1.0 - 0.45 * smoothstep(0.22, 0.72, length(panelLocal - 0.5));
+    content *= mix(dotMask, 1.0, 0.55);
+    vec2 kvCentered = vec2((uv.x - 0.5) * 2.2, (uv.y - 0.5) * 3.2);
+    content *= 0.22 + 0.78 * exp(-dot(kvCentered, kvCentered) * 0.9);
+
+    // Faint giant wordmark tiled across the wall; rows drift sideways.
+    float logoRow = floor(uv.y * 2.6);
+    vec2 logoUv = vec2(
+      fract(uv.x * 1.15 + logoRow * 0.37 + sin(logoRow * 3.0 + time * 0.25) * 0.03),
+      fract(uv.y * 2.6)
+    );
+    float logoMask = texture2D(logoTex, logoUv).a;
+    content += mix(vec3(0.045, 0.045, 0.07), content * 0.6, 0.5) * logoMask * 0.6;
+    content += vec3(0.35, 0.36, 0.42) * switchFlash;
+    return content;
+  }
+`;
+
 export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
   return new THREE.ShaderMaterial({
     side: THREE.FrontSide,
@@ -381,6 +474,8 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       // faint tiled wordmark mask.
       uThemeCycle: { value: 0 },
       uLogoTex: { value: null as THREE.Texture | null },
+      // 1 while the instanced 3D panels show the kv content in front.
+      uPanelCover: { value: 0 },
       uSceneFade: { value: 1 },
       uWallRadius: { value: 5 },
       uWallHalfWidth: { value: 11 },
@@ -433,6 +528,7 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
       uniform float uPosterMix;
       uniform float uThemeCycle;
       uniform sampler2D uLogoTex;
+      uniform float uPanelCover;
       uniform float uSceneFade;
       uniform vec2 uViewportPx;
 
@@ -441,33 +537,7 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
         return 1.0 - min(grid / width, 1.0);
       }
 
-      float wallHash21(vec2 p) {
-        p = fract(p * vec2(127.1, 311.7));
-        p += dot(p, p + 34.23);
-        return fract(p.x * p.y);
-      }
-
-      float wallNoise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f);
-        return mix(
-          mix(wallHash21(i), wallHash21(i + vec2(1.0, 0.0)), f.x),
-          mix(wallHash21(i + vec2(0.0, 1.0)), wallHash21(i + vec2(1.0, 1.0)), f.x),
-          f.y
-        );
-      }
-
-      float wallFbm(vec2 p) {
-        float v = 0.0;
-        float a = 0.55;
-        for (int i = 0; i < 4; i++) {
-          v += wallNoise(p) * a;
-          p = p * 2.03 + vec2(3.1, 1.7);
-          a *= 0.5;
-        }
-        return v;
-      }
+      ${ALCHE_WALL_KV_GLSL}
 
       void main() {
         vec2 uv = vMediaUv;
@@ -579,62 +649,11 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
         vec2 panelEdgeCells = min(panelLocal, 1.0 - panelLocal) * panelSize;
         float panelEdge = min(panelEdgeCells.x, panelEdgeCells.y);
         float panelSeam = 1.0 - smoothstep(0.012, 0.03, panelEdge);
-        float panelHash = wallHash21(panelId + vec2(8.2, 2.4));
-
-        float kvCycle = clamp(uThemeCycle, 0.0, 1.0);
-        float themeClock = uTime / 9.0;
-        float themeNow = mod(floor(themeClock), 3.0) * kvCycle;
-        float themeNext = mod(floor(themeClock) + 1.0, 3.0) * kvCycle;
-        float sweep01 = clamp((fract(themeClock) * 9.0 - 7.6) / 1.4, 0.0, 1.0);
-        float sweepAt = panelHash * 0.45 + uv.x * 0.55;
-        float switched = step(sweepAt, sweep01) * step(0.001, sweep01);
-        float panelTheme = mix(themeNow, themeNext, switched);
-        float switchFlash = exp(-abs(sweep01 - sweepAt) * 40.0) * step(0.001, sweep01) * kvCycle;
-
-        float glitchOn = step(0.9, wallHash21(panelId + vec2(floor(uTime * 0.7), 5.0)));
-        vec2 glitch = (vec2(wallHash21(panelId + 11.0), wallHash21(panelId + 23.0)) - 0.5) * 0.14 * glitchOn;
-        vec2 contentUv = uv + glitch;
-        float nA = wallFbm(contentUv * vec2(4.2, 3.0) + vec2(uTime * 0.035, -uTime * 0.022));
-        float nB = wallFbm(contentUv * vec2(3.0, 2.3) + vec2(-uTime * 0.028, uTime * 0.02) + 7.3);
-        float nC = wallFbm(contentUv * vec2(5.2, 3.9) + vec2(uTime * 0.02, uTime * 0.032) + 13.1);
-
-        vec3 kvContent;
-        if (panelTheme < 0.5) {
-          // Deep saturated blue-violet; rare cyan / orange blooms.
-          kvContent = vec3(0.045, 0.012, 0.36) * (0.12 + smoothstep(0.25, 0.85, nA) * 1.1);
-          kvContent += vec3(0.02, 0.2, 0.45) * smoothstep(0.7, 0.9, nB) * 0.35;
-          kvContent += vec3(0.7, 0.16, 0.02) * smoothstep(0.74, 0.94, nC) * 0.35;
-        } else if (panelTheme < 1.5) {
-          kvContent = vec3(0.015, 0.2, 0.06) * (0.12 + smoothstep(0.25, 0.85, nA) * 1.1);
-          kvContent += vec3(0.1, 0.35, 0.25) * smoothstep(0.7, 0.9, nB) * 0.4;
-        } else {
-          // Curvy contour stripes of a smooth low-frequency field.
-          float contourField = wallNoise(contentUv * 2.6 + vec2(uTime * 0.03, 0.0)) * 0.65
-            + wallNoise(contentUv * 5.1 + vec2(0.0, uTime * 0.025) + 4.0) * 0.35;
-          float band = smoothstep(0.4, 0.6, fract(contourField * 9.0 - uTime * 0.05));
-          kvContent = mix(vec3(0.008), vec3(0.24, 0.24, 0.26), band);
-        }
-        float panelOff = step(wallHash21(panelId + vec2(41.0, panelTheme * 17.0)), 0.3);
-        kvContent *= mix(1.0, 0.05, panelOff);
-        kvContent *= 1.0 - 0.45 * smoothstep(0.22, 0.72, length(panelLocal - 0.5));
-        kvContent *= mix(dotMask, 1.0, 0.55);
-        vec2 kvCentered = vec2((uv.x - 0.5) * 2.2, (uv.y - 0.5) * 3.2);
-        kvContent *= 0.22 + 0.78 * exp(-dot(kvCentered, kvCentered) * 0.9);
-
-        // Faint giant wordmark tiled across the wall (reference shows its logo
-        // this way); rows drift sideways.
-        float logoRow = floor(uv.y * 2.6);
-        vec2 logoUv = vec2(
-          fract(uv.x * 1.15 + logoRow * 0.37 + sin(logoRow * 3.0 + uTime * 0.25) * 0.03),
-          fract(uv.y * 2.6)
-        );
-        float logoMask = texture2D(uLogoTex, logoUv).a;
-        kvContent += mix(vec3(0.045, 0.045, 0.07), kvContent * 0.6, 0.5) * logoMask * 0.6;
-        kvContent += vec3(0.35, 0.36, 0.42) * switchFlash;
-
+        vec3 kvContent = alcheKvWallContent(uv, panelId, panelLocal, dotMask, uTime, uThemeCycle, uLogoTex);
         // Added on top of the panel structure (tile tint, LED hairlines, dot
         // lattice): switched-off panels stay dark but never read as a hole.
-        darkColor += kvContent * kvContentMix;
+        // Hidden where the instanced 3D panels take over (uPanelCover).
+        darkColor += kvContent * kvContentMix * (1.0 - clamp(uPanelCover, 0.0, 1.0));
 
         // Works-entry LED content (reference 7.5-9.0s): bold warped
         // greyscale zebra bands drifting diagonally across the tiles.
@@ -705,6 +724,128 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
 
         float alpha = 0.995 * uIntro * uSceneFade;
         gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+}
+
+/**
+ * Real 3D LED panels in front of the curved wall (reference wall model:
+ * instanced thin boxes of mixed sizes and depths). Each instance carries its
+ * rect in wall-parameter space and is bent onto the exact same surface as
+ * `createCurvedGridMaterial`, pushed out along the surface normal by its own
+ * depth. Front faces show the shared kv content; side faces glow with the
+ * panel's colour, brighter near the pointer.
+ */
+export function createWallPanelMaterial() {
+  return new THREE.ShaderMaterial({
+    side: THREE.FrontSide,
+    transparent: true,
+    depthWrite: true,
+    uniforms: {
+      uTime: { value: 0 },
+      uThemeCycle: { value: 0 },
+      uLogoTex: { value: null as THREE.Texture | null },
+      uVisibility: { value: 0 },
+      uExposure: { value: 1 },
+      uFlatten: { value: 0 },
+      uWallRadius: { value: 5 },
+      uWallHalfWidth: { value: 11 },
+      uWallHalfHeight: { value: 5.7 },
+      uPanelThickness: { value: 0.12 },
+      uPointer: { value: new THREE.Vector2(0, 0) },
+      uPointerActive: { value: 0 },
+      uAspect: { value: 1 },
+    },
+    vertexShader: `
+      attribute vec4 aPanelRect;
+      attribute vec4 aPanelInfo;
+
+      uniform float uFlatten;
+      uniform float uWallRadius;
+      uniform float uWallHalfWidth;
+      uniform float uWallHalfHeight;
+      uniform float uPanelThickness;
+      uniform vec2 uPointer;
+      uniform float uPointerActive;
+      uniform float uAspect;
+
+      varying vec2 vWallUv;
+      varying vec2 vCenterUv;
+      varying vec2 vLocal;
+      varying vec2 vPanelId;
+      varying float vSide;
+      varying float vPointerGlow;
+
+      vec3 alcheWallPoint(float a, float b) {
+        float flattenMix = smoothstep(0.0, 1.0, clamp(uFlatten, 0.0, 1.0));
+        float curveMix = 1.0 - flattenMix;
+        float radius = max(uWallRadius, 0.001);
+        float planeZ = mix(radius, -radius, flattenMix);
+        float curveDepth = radius * ${ALCHE_TOP_WALL_CURVE_DEPTH_SCALE.toFixed(5)};
+        float edgeSag = (1.0 - cos(min(abs(a), 1.0) * 1.5707963)) * curveDepth * curveMix;
+        return vec3(a * uWallHalfWidth, b * uWallHalfHeight, planeZ - curveDepth * curveMix + edgeSag);
+      }
+
+      void main() {
+        vec2 local = position.xy + 0.5;
+        float a = mix(aPanelRect.x, aPanelRect.z, local.x);
+        float b = mix(aPanelRect.y, aPanelRect.w, local.y);
+        vec3 p = alcheWallPoint(a, b);
+        vec3 tangent = normalize(alcheWallPoint(a + 0.002, b) - p);
+        vec3 wallNormal = normalize(cross(tangent, vec3(0.0, 1.0, 0.0)));
+        p += wallNormal * (aPanelInfo.z + (position.z + 0.5) * uPanelThickness);
+
+        vec2 centerAB = (aPanelRect.xy + aPanelRect.zw) * 0.5;
+        vec4 centerClip = projectionMatrix * modelViewMatrix * vec4(alcheWallPoint(centerAB.x, centerAB.y) + wallNormal * aPanelInfo.z, 1.0);
+        vec2 centerNdc = centerClip.xy / max(centerClip.w, 0.0001);
+        vec2 pointerDelta = (centerNdc - uPointer) * vec2(uAspect, 1.0);
+        vPointerGlow = exp(-dot(pointerDelta, pointerDelta) * 3.5) * uPointerActive;
+
+        vWallUv = vec2(a, b) * 0.5 + 0.5;
+        vCenterUv = centerAB * 0.5 + 0.5;
+        vLocal = local;
+        vPanelId = aPanelInfo.xy;
+        vSide = 1.0 - abs(normal.z);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uThemeCycle;
+      uniform sampler2D uLogoTex;
+      uniform float uVisibility;
+      uniform float uExposure;
+
+      varying vec2 vWallUv;
+      varying vec2 vCenterUv;
+      varying vec2 vLocal;
+      varying vec2 vPanelId;
+      varying float vSide;
+      varying float vPointerGlow;
+
+      ${ALCHE_WALL_KV_GLSL}
+
+      void main() {
+        // The id is interpolated as a varying; tiny float error (12.9999 vs
+        // 13.0001) flipped the per-panel hashes pixel by pixel (grain).
+        vec2 panelId = floor(vPanelId + 0.5);
+        vec3 col;
+        if (vSide < 0.5) {
+          vec2 dotGrid = vWallUv * vec2(420.0, 230.0);
+          float dotMask = smoothstep(0.46, 0.16, length(fract(dotGrid) - 0.5));
+          // Fade the lattice to its average once a dot is under ~2px
+          // (aliased into moire on small / far panels).
+          float dotFootprint = max(fwidth(dotGrid.x), fwidth(dotGrid.y));
+          dotMask = mix(dotMask, 0.45, smoothstep(0.3, 0.6, dotFootprint));
+          // Base keeps switched-off panels a readable dark screen.
+          col = vec3(0.007, 0.007, 0.012) * (0.7 + dotMask * 0.6)
+            + alcheKvWallContent(vWallUv, panelId, vLocal, dotMask, uTime, uThemeCycle, uLogoTex);
+        } else {
+          vec3 panelColor = alcheKvWallContent(vCenterUv, panelId, vec2(0.5), 1.0, uTime, uThemeCycle, uLogoTex);
+          col = vec3(0.012, 0.012, 0.02) + panelColor * (0.55 + vPointerGlow * 2.6);
+        }
+        gl_FragColor = vec4(col * uExposure, clamp(uVisibility, 0.0, 1.0));
       }
     `,
   });

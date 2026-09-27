@@ -4,6 +4,32 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Fifteenth pass (2026-09-27): real 3D LED panels
+
+- `createWallPanelMaterial` + `createWallPanelGeometry` (kv-scene-system):
+  one `InstancedBufferGeometry` of unit boxes (~300 instances, one draw call)
+  laid out by `createWallPanelLayout` (seeded, 14x8 cells over wall params
+  +-0.86; 24% 2x2 merges, 20% 2x2 splits; 0.05 world gap; depth 0.02-0.34,
+  mostly shallow). The vertex shader bends each box onto the exact backing
+  wall surface (same formula as `createCurvedGridMaterial`, incl. flatten) and
+  pushes it out along the surface normal; thickness 0.12.
+- Content GLSL is shared (`ALCHE_WALL_KV_GLSL`: hashes, noise, fbm,
+  `alcheKvWallContent`), so the backing wall and panels can't drift. Fronts
+  show the content (plus a dark base so switched-off panels never read as a
+  hole); sides glow with the panel colour, brighter near the window pointer
+  (stand-in for the reference's fluid glow; off for reduced motion/captures).
+- Backing wall stays for everything else (gaps, works zebra, poster echo,
+  mission paper, flatten). `uPanelCover` hides its own kv content while the
+  panels are visible; panel visibility = intro x sceneFade x (1-zebra) x
+  (1-poster) x (1-whiteMix), using the wall's damped uniforms.
+- Traps: the panel id arrives as an interpolated varying; hashing it
+  unrounded flipped per-panel palette/blackout pixel by pixel (grain) -> use
+  `floor(vPanelId + 0.5)`. LED dot lattice fades to its mean below ~2px
+  (`fwidth`) to avoid moire.
+- Validator: in full mode the vision live end-state and pointer checks now
+  use fresh browsers (the long-lived browser rendered the heavier kv too
+  slowly to reach intro-ready in 12s). Full suite green (38 min).
+
 ## Fourteenth pass (2026-09-27): kv LED wall on the reference wall model
 
 - Reference wall (from the same shader capture): hundreds of instanced thin
