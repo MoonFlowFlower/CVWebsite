@@ -2,7 +2,7 @@ export const SITE = {
   name: "Ashen Archive",
   studioName: "流月工作室",
   founderName: "Zhouyu Liao",
-  siteUrl: "https://pen364692088.github.io",
+  siteUrl: "https://moonflowflower.github.io",
   basePath: "/CVWebsite",
   localeStorageKey: "ashen-archive-locale",
 } as const;

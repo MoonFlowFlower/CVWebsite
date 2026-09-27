@@ -22,6 +22,9 @@ import {
   ALCHE_TOP_SECTIONS,
   ALCHE_TOP_WORKS_CARDS,
   deriveMissionTransitionOverlayState,
+  deriveServiceActiveIndex,
+  deriveServiceEntry,
+  deriveServicePanelPose,
   normalizeTopRuntimeSection,
   type AlcheScrollableSectionId,
   type AlcheTopSectionId,
@@ -370,7 +373,24 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
     GitHub: githubHref,
     Email: contactHref,
   };
-  const servicePanelVisible = serviceProgress > 0.02 && serviceProgress < 0.97 && !endmarkFooterVisible;
+  // Reference 16.25-16.6s: the service room is already visible *through* the
+  // rainbow portal, so it cross-fades in over the tail of the vision cover
+  // (still in its zoomed / colour-split entry state) instead of cutting via black.
+  const servicePortalMix =
+    serviceProgress <= 0.02 && !endmarkFooterVisible
+      ? Math.min(1, Math.max(0, (visionCoverProgress - 0.86) / 0.14))
+      : 0;
+  const servicePanelVisible =
+    (serviceProgress > 0.02 && serviceProgress < 0.97 && !endmarkFooterVisible) || servicePortalMix > 0.01;
+  const serviceOverlayOpacity = serviceProgress > 0.02 ? 1 : servicePortalMix;
+  const serviceItems = copy.service.items;
+  const serviceEntry = reducedMotion ? 1 : deriveServiceEntry(serviceProgress);
+  const serviceActiveIndex = deriveServiceActiveIndex(serviceProgress, serviceItems.length);
+  const serviceWallStyle = {
+    "--service-entry": serviceEntry.toFixed(4),
+    "--service-progress": serviceProgress.toFixed(4),
+    opacity: servicePanelVisible ? serviceOverlayOpacity : 0,
+  } as CSSProperties;
   const stelllaPanelVisible = stelllaProgress > 0.06 && outroApproachProgress < 0.5 && !endmarkFooterVisible;
   const missionLightPhase =
     missionPanelProgress > 0.6 && serviceProgress < 0.08 && visionCoverProgress < 0.72 && !endmarkTriggerActive;
@@ -863,17 +883,73 @@ export function AlcheTopPageShell({ locale, contacts }: AlcheTopPageShellProps) 
             className={styles.serviceOverlay}
             data-visible={servicePanelVisible ? "true" : "false"}
             aria-hidden={servicePanelVisible ? undefined : "true"}
+            style={serviceWallStyle}
           >
-            <p className={styles.serviceOverlayEyebrow}>{copy.service.eyebrow}</p>
-            <h3 className={styles.serviceOverlayTitle}>{copy.service.title}</h3>
-            <div className={styles.serviceOverlayItems}>
-              {copy.service.items.map((item) => (
-                <article key={item.code} className={styles.serviceOverlayItem}>
-                  <span className={styles.serviceOverlayItemCode}>{item.code}</span>
-                  <h4>{item.title}</h4>
-                  <p>{item.body}</p>
-                </article>
-              ))}
+            {/* Reference 16.25-19.0s: dark LED room with giant repeated
+                wall word, blurred wash of the active media, and a carousel of
+                perspective panels. Everything is driven by serviceProgress. */}
+            <div className={styles.serviceRoom} aria-hidden="true">
+              <div
+                className={styles.serviceWash}
+                style={{ backgroundImage: `url(${assetPath(serviceItems[serviceActiveIndex]?.imageSrc ?? "")})` }}
+              />
+              <div className={styles.serviceWordWall}>
+                {[0, 1, 2].map((row) => (
+                  <div
+                    key={row}
+                    className={styles.serviceWordRow}
+                    style={{
+                      transform: `translate3d(${((row % 2 === 0 ? -1 : 1) * serviceProgress * 18 - 8 * row).toFixed(2)}vw, 0, 0)`,
+                    }}
+                  >
+                    {`${copy.service.wallWord} `.repeat(4)}
+                  </div>
+                ))}
+              </div>
+              <div className={styles.serviceGrid} />
+              <div className={styles.serviceNoise} />
+            </div>
+
+            <div className={styles.serviceHeading}>
+              <p className={styles.serviceOverlayEyebrow}>{copy.service.eyebrow}</p>
+              <h3 className={styles.srOnly}>{copy.service.title}</h3>
+            </div>
+
+            <div className={styles.serviceStage}>
+              {serviceItems.map((item, index) => {
+                const pose = deriveServicePanelPose(serviceProgress, index, serviceItems.length);
+                const onStage = pose.opacity > 0.01;
+                return (
+                  <article
+                    key={item.code}
+                    className={styles.serviceSlide}
+                    data-active={index === serviceActiveIndex ? "true" : "false"}
+                    aria-hidden={onStage ? undefined : "true"}
+                    style={{
+                      opacity: pose.opacity,
+                      transform: `translate3d(${pose.x.toFixed(2)}vw, 0, 0)`,
+                      visibility: onStage ? "visible" : "hidden",
+                    }}
+                  >
+                    <div
+                      className={styles.servicePanelMedia}
+                      style={{ transform: `rotateY(${pose.rotateY.toFixed(2)}deg)` }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={assetPath(item.imageSrc)} alt="" loading="lazy" decoding="async" />
+                    </div>
+                    <div
+                      className={styles.servicePanelCopy}
+                      style={{ clipPath: `inset(0 ${(100 - pose.reveal * 100).toFixed(2)}% 0 0)` }}
+                    >
+                      <span className={styles.servicePanelBadge}>{item.badge}</span>
+                      <h4 className={styles.servicePanelTitle}>{item.title}</h4>
+                      <p className={styles.servicePanelBody}>{item.body}</p>
+                      <span className={styles.serviceOverlayItemCode}>{item.code}</span>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
 

@@ -24,8 +24,8 @@ export const contactLinks: ContactLink[] = [
   },
   {
     key: "github",
-    href: "https://github.com/pen364692088",
-    label: "github.com/pen364692088",
+    href: "https://github.com/MoonFlowFlower",
+    label: "github.com/MoonFlowFlower",
     available: true,
   },
   {

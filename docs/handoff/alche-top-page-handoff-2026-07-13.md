@@ -4,6 +4,41 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Sixth pass (2026-09-26): Service section (reference 16.25-19.0s)
+
+- Stays in the DOM shell (the 3D scene is pinned to runtime `mission_in`
+  after mission; moving service into R3F would un-pin validator-backed
+  choreography). Built with CSS 3D, all driven by `serviceProgress`:
+  - room: black LED wall, `+` marker grid, three rows of giant grey
+    `service.wallWord` ("SERVICES") under `rotateY(24deg)` drifting with
+    scroll, blurred wash of the active panel image;
+  - portal entry (`deriveServiceEntry`, first 12%): room zoomed 2.4x, white
+    letters with red/cyan split, overlay-blended grain on black, settles to
+    dim wall lettering. The overlay cross-fades in over the last 14% of the
+    vision cover (`servicePortalMix`), so the rainbow dissolves into the
+    SERVICES close-up instead of cutting via black;
+  - panel carousel (`deriveServicePanelPose`): each item enters from the
+    right edge turned toward the room centre, holds centre-left with its copy
+    column (badge, title reveal, body, code) to the right, exits left while
+    the next enters. Mobile (<=768px) stacks panel above copy.
+- Data: `AlcheServiceItem` gained `badge` + `imageSrc` (reusing existing
+  poster assets); service bodies are now localized for en/zh-CN/ja/ko
+  (previously English in every locale); `service.wallWord`.
+- CSS gotchas hit: `perspective` must sit on the transformed `.serviceSlide`
+  or the media `rotateY` flattens; a transformed group isolates blending, so
+  `.serviceRoom` needs its own black background for the overlay-blend grain;
+  `.servicePanel` was already a legacy selector in several media queries,
+  hence `.serviceSlide`.
+- Stale account links fixed: GitHub account is now `MoonFlowFlower`
+  (repo 301s there; old profile + old Pages domain 404). Updated
+  `data/profile.ts`, `lib/site.ts` siteUrl, `app/layout.tsx` metadataBase.
+- `scripts/linkcheck-local.sh`: falls back to `python` when `python3` is
+  missing (Git Bash) and runs linkinator at concurrency 4. On Windows the
+  python server still drops some connections (status `[0]`); every reported
+  URL returns 200 when requested sequentially.
+- Next: stellla section is still the flat DOM frame (reference 19.0-20.0s:
+  full-bleed soft video "Dive into Fashion" + large stellla wordmark).
+
 ## Fifth pass (2026-09-26): vision gap, crystal refraction, mouse tilt
 
 - **Vision rainbow was on the back face.** After the apex-up flip

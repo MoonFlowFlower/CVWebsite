@@ -20,6 +20,10 @@ export interface AlcheServiceItem {
   code: string;
   title: string;
   body: string;
+  // Platform badge shown above the service panel (reference "CREATED IN
+  // FORTNITE" / "UNREAL ENGINE" lock-ups, rendered as text).
+  badge: string;
+  imageSrc: string;
 }
 
 export interface AlcheEndmarkFooterColumn {
@@ -89,6 +93,8 @@ export interface AlcheTopPageCopy {
   service: {
     eyebrow: string;
     title: string;
+    // Giant repeated word on the service wall (reference keeps it in English).
+    wallWord: string;
     items: AlcheServiceItem[];
   };
   stellla: {
@@ -161,23 +167,53 @@ const sharedWorks = [
   },
 ] as const;
 
-const sharedService = [
+const sharedServiceMeta = [
   {
     code: "SV-01",
     title: "Fortnite Creative Works",
-    body: "Branded playable worlds and large-scale interactive events built around IP, artists, and audience participation.",
+    badge: "CREATED IN FORTNITE",
+    imageSrc: "/alche-top-page/works/matsuken-samba-poster.png",
   },
   {
     code: "SV-02",
     title: "Unreal Engine Works",
-    body: "Cloud-rendered and device-targeted experiences that extend game-engine quality into immersive entertainment products.",
+    badge: "UNREAL ENGINE",
+    imageSrc: "/alche-top-page/works/discoat-poster.png",
   },
   {
     code: "SV-03",
     title: "stellla Platform",
-    body: "A reusable metaverse platform layer for fashion, live events, and industrial-grade digital spaces.",
+    badge: "stellla",
+    imageSrc: "/alche-top-page/works/wear-go-land-poster.png",
   },
 ] as const;
+
+function buildServiceItems(bodies: readonly [string, string, string]): AlcheServiceItem[] {
+  return sharedServiceMeta.map((meta, index) => ({ ...meta, body: bodies[index] }));
+}
+
+const serviceBodies = {
+  en: [
+    "Branded playable worlds and large-scale interactive events built around IP, artists, and audience participation.",
+    "Cloud-rendered and device-targeted experiences that extend game-engine quality into immersive entertainment products.",
+    "A reusable metaverse platform layer for fashion, live events, and industrial-grade digital spaces.",
+  ],
+  "zh-CN": [
+    "围绕 IP、艺人与观众参与打造的品牌可玩世界与大型互动活动。",
+    "以云渲染与多终端适配，把游戏引擎级画质延伸到沉浸式娱乐产品中。",
+    "面向时尚、现场活动与工业级数字空间的可复用元宇宙平台层。",
+  ],
+  ja: [
+    "IP・アーティスト・観客参加を軸にした、ブランドのプレイアブルワールドと大規模インタラクティブイベント。",
+    "クラウドレンダリングとデバイス最適化で、ゲームエンジン品質を没入型エンタメへ広げる体験。",
+    "ファッション、ライブイベント、産業向けデジタル空間に使える再利用可能なメタバース基盤。",
+  ],
+  ko: [
+    "IP, 아티스트, 관객 참여를 중심으로 만든 브랜드 플레이어블 월드와 대규모 인터랙티브 이벤트.",
+    "클라우드 렌더링과 디바이스 최적화로 게임 엔진 품질을 몰입형 엔터테인먼트로 확장하는 경험.",
+    "패션, 라이브 이벤트, 산업용 디지털 공간을 위한 재사용 가능한 메타버스 플랫폼 레이어.",
+  ],
+} as const satisfies Record<Locale, readonly [string, string, string]>;
 
 const sharedEndmarkFooter = {
   columns: [
@@ -253,7 +289,8 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     service: {
       eyebrow: "Service",
       title: "Production systems across interactive worlds, Unreal environments, and platformized spatial products.",
-      items: [...sharedService],
+      wallWord: "SERVICES",
+      items: buildServiceItems(serviceBodies.en),
     },
     stellla: {
       eyebrow: "stellla",
@@ -336,7 +373,8 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     service: {
       eyebrow: "Service",
       title: "覆盖互动世界、Unreal 场景与平台化空间产品的制作系统。",
-      items: sharedService.map((item) => ({ ...item })),
+      wallWord: "SERVICES",
+      items: buildServiceItems(serviceBodies["zh-CN"]),
     },
     stellla: {
       eyebrow: "stellla",
@@ -419,7 +457,8 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     service: {
       eyebrow: "Service",
       title: "インタラクティブな世界、Unreal 環境、空間プロダクト基盤を横断する制作システム。",
-      items: sharedService.map((item) => ({ ...item })),
+      wallWord: "SERVICES",
+      items: buildServiceItems(serviceBodies["ja"]),
     },
     stellla: {
       eyebrow: "stellla",
@@ -502,7 +541,8 @@ export const alcheTopPageCopy: Record<Locale, AlcheTopPageCopy> = {
     service: {
       eyebrow: "Service",
       title: "인터랙티브 월드, Unreal 환경, 플랫폼형 공간 제품을 가로지르는 제작 시스템.",
-      items: sharedService.map((item) => ({ ...item })),
+      wallWord: "SERVICES",
+      items: buildServiceItems(serviceBodies["ko"]),
     },
     stellla: {
       eyebrow: "stellla",

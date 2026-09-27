@@ -22,7 +22,7 @@ const displayAlt = Barlow_Condensed({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://pen364692088.github.io"),
+  metadataBase: new URL("https://moonflowflower.github.io"),
   title: "Ashen Archive",
   description: "Dark fantasy inspired portfolio for Unity systems, technical art, VFX, and playable fragments.",
 };

@@ -853,6 +853,48 @@ export function deriveGroupProgress(sectionId: AlcheTopSectionId, sectionProgres
   return clamp01((index + clamp01(sectionProgress)) / group.subsections.length);
 }
 
+export interface AlcheServicePanelPose {
+  /** Horizontal offset of the whole panel group, in vw. */
+  x: number;
+  /** Panel yaw in degrees (panels face the room centre). */
+  rotateY: number;
+  opacity: number;
+  /** 0..1 left-to-right reveal of the title/description column. */
+  reveal: number;
+  /** Item-local timeline: <0 queued, 0..1 on stage, >1 gone. */
+  local: number;
+}
+
+const ALCHE_SERVICE_ITEMS_START = 0.1;
+const ALCHE_SERVICE_ITEMS_END = 0.97;
+
+/** Reference 16.25-16.6s: the room is seen through the rainbow portal, zoomed
+ * in and colour-split, then settles. 0 = portal close-up, 1 = settled. */
+export function deriveServiceEntry(progress: number) {
+  return smoothstep(remapRange(progress, 0, 0.12));
+}
+
+/** Reference 17.0-19.0s: each service panel slides in from the right edge,
+ * holds centre-left with its copy column to the right, then exits left while
+ * the next one enters. */
+export function deriveServicePanelPose(progress: number, index: number, count: number): AlcheServicePanelPose {
+  const slot = (ALCHE_SERVICE_ITEMS_END - ALCHE_SERVICE_ITEMS_START) / Math.max(count, 1);
+  const local = (progress - ALCHE_SERVICE_ITEMS_START) / slot - index;
+  const enter = smoothstep(remapRange(local, -0.15, 0.35));
+  const exit = index === count - 1 ? 0 : smoothstep(remapRange(local, 0.8, 1.3));
+  const x = 52 * (1 - enter) - 78 * exit;
+  const rotateY = -26 * (1 - enter) + 12 * enter + 18 * exit;
+  const opacity = smoothstep(remapRange(local, -0.2, 0.05)) * (1 - smoothstep(remapRange(local, 1.1, 1.3)));
+  const reveal = smoothstep(remapRange(local, 0.12, 0.5)) * (1 - exit);
+  return { x, rotateY, opacity, reveal, local };
+}
+
+export function deriveServiceActiveIndex(progress: number, count: number) {
+  const slot = (ALCHE_SERVICE_ITEMS_END - ALCHE_SERVICE_ITEMS_START) / Math.max(count, 1);
+  const raw = Math.floor((progress - ALCHE_SERVICE_ITEMS_START) / slot + 0.2);
+  return Math.max(0, Math.min(count - 1, raw));
+}
+
 export function deriveWorksWordHandoff(activeSection: AlcheTopSectionId, sectionProgress: number) {
   const progress = clamp01(sectionProgress);
 
