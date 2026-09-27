@@ -28,6 +28,12 @@ Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-20
   and popped in at ~75% of the entry).
 - Data: stellla copy rewritten (the old strings were internal design notes);
   new `specs` + `imageSrc`, `frameLabel` removed; all four locales.
+- Remote-only black service panel: queued slides used `visibility: hidden`,
+  so Chrome did not rasterise their image ahead of the reveal (reproducible
+  only on GitHub Pages, not the local export). Slides now hide with opacity
+  only, images decode sync. Rectified posters also moved PNG -> JPEG
+  (~3.4 MB -> ~0.5 MB). `public/alche-top-page/works/_probe-stage6.png`
+  (3.6 MB) is unreferenced and still ships with the export.
 - Class-name collisions again: legacy `.stelllaFrame` (height 10rem) exists
   later in the stylesheet, hence `.stelllaStageFrame`. Before adding shell
   classes, grep the SCSS for the name.
