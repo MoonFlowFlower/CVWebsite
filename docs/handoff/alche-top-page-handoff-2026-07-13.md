@@ -4,6 +4,43 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Tenth pass (2026-09-27): validation back to all-green
+
+All green on a fresh export: `lint`, `typecheck`, `build`, `verify:static`,
+`--cards-only`, `--vision-cover-live-only`, `--works-outro-live-only`,
+`--endmark-live-only` (5/5 repeat runs) and the full default suite
+(`npm run validate:playwright`, ~36 min on this machine).
+
+Real fixes (app code):
+- Cards were oversized on narrow screens (81% width at 4:3; poses were tuned
+  at 1.9:1 with a vertical-FOV camera). `getCompensatedAlcheWorksCardPoseDefinition`
+  now scales the lead by `aspect / 1.9` below that aspect and side lanes by
+  half that amount; the scene reads the lead pose per-viewport too.
+  `queue-right-lower` angle 0.84 -> 0.88.
+- `cardsOpacity` debug metric only looked at mesh 0 and the legacy "B" slot,
+  so it read ~0 during extra queue cycles while card C/D led; now max over all
+  visible cards.
+- Debug `prismGroupScale` falls back to the edge-overlay crystal (the visible
+  one during mission/vision).
+
+Validator updates (intent kept, stale assumptions removed):
+- Refraction perf guards moved from cards shots (crystal hidden by design) to
+  `works-outro-entry/flatten`; the idle guard waits for the pose to settle
+  instead of a fixed 1.4s.
+- Vision live end-state targets the vision section end, not the document
+  bottom (service/stellla/outro were appended after vision).
+- Right-edge and wall-continuity checks count empty columns of bare clear
+  colour (< 6/255) instead of dark pixels; the dark LED wall is dark by design
+  but keeps structure in every column. Light-wall luma floor removed.
+- Grid-density ratio (early vs flatten) is reported as SKIPPED when the wall
+  is below luma 40: on the dark wall three detectors gave unstable spacings,
+  so it is not tuned to pass. Still runs on a readable (light) wall.
+- works_intro allows model scale up to 1.5 (intentional half-turn swell).
+- Endmark live: re-scrolls to the real bottom with fast 100ms corrections;
+  full mode now uses a fresh browser per stage like the dedicated mode (the
+  long-lived browser missed the short "black" stage); timeout diagnostics use
+  a circular-safe stringify (GSAP objects).
+
 ## Ninth pass (2026-09-27): LED wall echoes the lead poster (reference 9.5-11s)
 
 - `WorksCardPair` writes a shared `wallMediaRef` each frame (`from`/`to`

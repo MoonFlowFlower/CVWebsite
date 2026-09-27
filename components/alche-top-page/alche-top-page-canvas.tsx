@@ -286,6 +286,9 @@ export function AlcheTopPageCanvas({
         ...layerDebugRef.current,
         prismEdgeOpacity: edgeState?.prismEdgeOpacity ?? layerDebugRef.current.prismEdgeOpacity,
         prismLineOpacity: edgeState?.prismLineOpacity ?? layerDebugRef.current.prismLineOpacity,
+        // During mission/vision the visible crystal is the edge-overlay one
+        // (the full-render group is hidden), so report its scale then.
+        prismGroupScale: layerDebugRef.current.prismGroupScale ?? edgeState?.prismGroupScale ?? null,
       };
     };
 

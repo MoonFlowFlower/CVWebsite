@@ -147,7 +147,28 @@ export function getAlcheWorksDesktopAspectCompensation(viewportWidth: number, vi
   );
 }
 
+// Card poses were tuned at ~1.9:1 (1600x842, lead card ~56% of the width).
+// The camera FOV is vertical, so on narrower screens the same world-size card
+// fills more of the width (81% at 4:3). Scale the whole carousel down below
+// this aspect so the framing holds; wider screens are unchanged.
+const ALCHE_WORKS_CARD_TUNED_ASPECT = 1.9;
+
 export function getCompensatedAlcheWorksCardPoseDefinition(
+  poseId: AlcheWorksCardPoseId,
+  viewportWidth: number,
+  viewportHeight: number,
+): AlcheWorksCardPoseDefinition {
+  const pose = getAspectCompensatedAlcheWorksCardPoseDefinition(poseId, viewportWidth, viewportHeight);
+  const aspect = viewportWidth / Math.max(viewportHeight, 1);
+  const narrowScale = Math.min(1, aspect / ALCHE_WORKS_CARD_TUNED_ASPECT);
+  if (narrowScale >= 1) return pose;
+  // Side lanes are half offscreen, so full scaling made them too thin; they
+  // shrink half as much as the lead.
+  const poseScale = poseId === "lead-center" ? narrowScale : 1 - (1 - narrowScale) * 0.5;
+  return { ...pose, scale: pose.scale * poseScale };
+}
+
+function getAspectCompensatedAlcheWorksCardPoseDefinition(
   poseId: AlcheWorksCardPoseId,
   viewportWidth: number,
   viewportHeight: number,

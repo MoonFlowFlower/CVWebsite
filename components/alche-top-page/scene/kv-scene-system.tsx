@@ -193,7 +193,6 @@ const ALCHE_TOP_PRISM_READABLE_LENS_WARP_STRENGTH = 1.32;
 const ALCHE_TOP_PRISM_READABLE_CHROMATIC_STRENGTH = 0.0145;
 const ALCHE_TOP_PRISM_EMISSIVE_TARGET = 0.16;
 
-const leadCenterPose = getAlcheWorksCardPoseDefinition("lead-center");
 const cardForwardAxis = new THREE.Vector3(0, 0, 1);
 
 function configureCardTexture(texture: THREE.Texture) {
@@ -784,6 +783,8 @@ function WorksCardPair({
     const extraQueueEnd = ALCHE_TOP_WORKS_CARDS.extraCycleQueueEnd;
     const extraLeadEnd = ALCHE_TOP_WORKS_CARDS.extraCycleLeadEnd;
     const extraHandoffMix = smoothstep(clamp01((cycleU - extraQueueEnd) / Math.max(extraLeadEnd - extraQueueEnd, 0.0001)));
+    // Per-viewport: narrow screens scale the whole carousel (see shotbook).
+    const leadCenterPose = getCompensatedAlcheWorksCardPoseDefinition("lead-center", state.size.width, state.size.height);
     const compensatedQueueRightLowerOffscreenPose = getCompensatedAlcheWorksCardPoseDefinition(
       "queue-right-lower-offscreen",
       state.size.width,
@@ -1076,9 +1077,12 @@ function WorksCardPair({
         supportWorldRef.current.copy(card1WorldRef.current);
       }
 
-      layerDebugRef.current.cardsOpacity = Math.max(
-        card0Visible ? materials[0].opacity : 0,
-        card1Visible ? secondaryMaterial.opacity : 0,
+      // Any on-screen card counts: in extra queue cycles the lead card is
+      // neither mesh 0 nor the legacy "B" slot, so the two-slot max read ~0
+      // while a card sat centre-screen.
+      layerDebugRef.current.cardsOpacity = materials.reduce(
+        (maxOpacity, material, index) => (visibles[index] ? Math.max(maxOpacity, material.opacity) : maxOpacity),
+        0,
       );
       layerDebugRef.current.cardsLeadIndex = leadIndex;
       layerDebugRef.current.cardsLeadOpacity =

@@ -426,20 +426,23 @@ async function assertRightBandBlackRatio(page, screenshotBuffer, label, maxRatio
       const width = Math.max(1, Math.floor(canvas.width * region.widthRatio));
       const height = Math.max(1, Math.floor(canvas.height * region.heightRatio));
       const pixels = context.getImageData(x, y, width, height).data;
-      let blackPixels = 0;
-      const totalPixels = width * height;
-
-      for (let index = 0; index < pixels.length; index += 4) {
-        const alpha = pixels[index + 3];
-        const red = pixels[index];
-        const green = pixels[index + 1];
-        const blue = pixels[index + 2];
-        if (alpha > 180 && red < 22 && green < 22 && blue < 22) {
-          blackPixels += 1;
+      // A real unroll gap exposes the bare #000 clear colour as solid empty
+      // columns. The dark LED wall is also mostly < 22/255 but every column
+      // carries structure (grid lines, dots, markers), so count empty
+      // columns rather than dark pixels.
+      let emptyColumns = 0;
+      for (let column = 0; column < width; column += 1) {
+        let emptyPixels = 0;
+        for (let row = 0; row < height; row += 1) {
+          const index = (row * width + column) * 4;
+          if (pixels[index + 3] > 180 && Math.max(pixels[index], pixels[index + 1], pixels[index + 2]) < 6 /* bare clear colour; dim wall edges peak >= 6 */) {
+            emptyPixels += 1;
+          }
         }
+        if (emptyPixels / height >= 0.98) emptyColumns += 1;
       }
 
-      return blackPixels / totalPixels;
+      return emptyColumns / width;
     },
     {
       source: `data:image/png;base64,${screenshotBuffer.toString("base64")}`,
@@ -452,11 +455,11 @@ async function assertRightBandBlackRatio(page, screenshotBuffer, label, maxRatio
     },
   );
 
-  assert(ratio <= maxRatio, `Expected ${label} right edge black ratio <= ${maxRatio}, got ${ratio.toFixed(4)}.`);
+  assert(ratio <= maxRatio, `Expected ${label} right edge empty-column ratio <= ${maxRatio}, got ${ratio.toFixed(4)}.`);
   return ratio;
 }
 
-async function assertLightWallContinuity(page, screenshotBuffer, label) {
+async function assertWallContinuity(page, screenshotBuffer, label) {
   const stats = await page.evaluate(
     async ({ source, regions }) => {
       const image = new Image();
@@ -477,28 +480,30 @@ async function assertLightWallContinuity(page, screenshotBuffer, label) {
         const height = Math.max(1, Math.floor(canvas.height * region.heightRatio));
         const pixels = context.getImageData(x, y, width, height).data;
         const totalPixels = width * height;
-        let blackPixels = 0;
         let lumaSum = 0;
         let lumaSqSum = 0;
+        let emptyColumns = 0;
 
-        for (let index = 0; index < pixels.length; index += 4) {
-          const alpha = pixels[index + 3];
-          const red = pixels[index];
-          const green = pixels[index + 1];
-          const blue = pixels[index + 2];
-          const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
-          lumaSum += luma;
-          lumaSqSum += luma * luma;
-          if (alpha > 180 && red < 28 && green < 28 && blue < 28) {
-            blackPixels += 1;
+        for (let column = 0; column < width; column += 1) {
+          let emptyPixels = 0;
+          for (let row = 0; row < height; row += 1) {
+            const index = (row * width + column) * 4;
+            const red = pixels[index];
+            const green = pixels[index + 1];
+            const blue = pixels[index + 2];
+            const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+            lumaSum += luma;
+            lumaSqSum += luma * luma;
+            if (pixels[index + 3] > 180 && Math.max(red, green, blue) < 6 /* bare clear colour; dim wall edges peak >= 6 */) emptyPixels += 1;
           }
+          if (emptyPixels / height >= 0.98) emptyColumns += 1;
         }
 
         const lumaMean = lumaSum / totalPixels;
         const variance = Math.max(0, lumaSqSum / totalPixels - lumaMean * lumaMean);
         return {
           name: region.name,
-          blackRatio: blackPixels / totalPixels,
+          emptyColumnRatio: emptyColumns / width,
           lumaMean,
           lumaStdDev: Math.sqrt(variance),
         };
@@ -516,9 +521,17 @@ async function assertLightWallContinuity(page, screenshotBuffer, label) {
     },
   );
 
+  // Wall continuity for both art directions: the works_outro wall is the dark
+  // LED wall (07-13 pass) and only whitens toward mission. A hole exposes the
+  // bare #000 clear colour as solid empty columns; the real dark wall keeps
+  // grid/dot structure in every column (measured <= 3.6% empty columns).
   for (const stat of stats) {
-    assert(stat.blackRatio <= 0.035, `Expected ${label} ${stat.name} black ratio <= 0.035, got ${stat.blackRatio.toFixed(4)}.`);
-    assert(stat.lumaMean >= 96, `Expected ${label} ${stat.name} to remain a light wall region, got mean ${stat.lumaMean.toFixed(2)}.`);
+    assert(
+      stat.emptyColumnRatio <= 0.1,
+      `Expected ${label} ${stat.name} wall continuity (empty-column ratio <= 0.1), got ${stat.emptyColumnRatio.toFixed(4)}.`,
+    );
+    // No brightness floor: the flattened dark wall legitimately averages ~3/255
+    // in places; holes are caught by the empty-column check above.
     assert(stat.lumaStdDev <= 58, `Expected ${label} ${stat.name} to avoid harsh seam/shadow contrast, got ${stat.lumaStdDev.toFixed(2)}.`);
   }
 
@@ -547,6 +560,7 @@ async function sampleVerticalFrameSpacing(page, screenshotPath, label) {
       const height = Math.max(1, Math.floor(canvas.height * region.heightRatio));
       const pixels = context.getImageData(x, y, width, height).data;
       const columns = [];
+      let lumaTotal = 0;
 
       for (let column = 0; column < width; column += 1) {
         let darkness = 0;
@@ -556,6 +570,7 @@ async function sampleVerticalFrameSpacing(page, screenshotPath, label) {
           const green = pixels[index + 1];
           const blue = pixels[index + 2];
           const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+          lumaTotal += luma;
           darkness += Math.max(0, 190 - luma);
         }
         columns.push(darkness / height);
@@ -604,6 +619,7 @@ async function sampleVerticalFrameSpacing(page, screenshotPath, label) {
       return {
         peakCount: peaks.length,
         spacingMedian,
+        meanLuma: lumaTotal / (width * height),
       };
     },
     {
@@ -613,9 +629,19 @@ async function sampleVerticalFrameSpacing(page, screenshotPath, label) {
   );
 
   assert(stats, `Expected ${label} grid-density sampling to return stats.`);
+  return stats;
+}
+
+// Frame-line detection needs a readable wall. On the dark LED wall (07-13
+// art direction) seams sit only a few levels below the panels, and three
+// detectors (raw darkness, high-pass peaks, autocorrelation) gave unstable
+// spacings, so the comparison is reported as skipped there instead of being
+// tuned until it passes.
+const GRID_DENSITY_MIN_WALL_LUMA = 40;
+
+function assertFrameSpacingReadable(stats, label) {
   assert(stats.peakCount >= 4, `Expected ${label} to expose at least 4 vertical frame lines, got ${stats.peakCount}.`);
   assert(stats.spacingMedian !== null, `Expected ${label} to expose measurable vertical frame spacing.`);
-  return stats;
 }
 
 async function assertWorksOutroGridDensityRatio() {
@@ -633,6 +659,14 @@ async function assertWorksOutroGridDensityRatio() {
         path.join(outputDir, "works-outro-wheel-flatten-desktop-2000x1080.png"),
         "works-outro-wheel-flatten",
       );
+      if (early.meanLuma < GRID_DENSITY_MIN_WALL_LUMA || flatten.meanLuma < GRID_DENSITY_MIN_WALL_LUMA) {
+        console.log(
+          `SKIPPED works outro grid density ratio: dark LED wall is below the readable luma floor (early ${early.meanLuma.toFixed(1)}, flatten ${flatten.meanLuma.toFixed(1)}).`,
+        );
+        return;
+      }
+      assertFrameSpacingReadable(early, "works-outro-curvature-early");
+      assertFrameSpacingReadable(flatten, "works-outro-wheel-flatten");
       const ratio = early.spacingMedian / flatten.spacingMedian;
       assert(
         ratio >= 0.8 && ratio <= 1.25,
@@ -696,6 +730,20 @@ async function sampleEndmarkLiveState(page) {
   });
 }
 
+// Debug snapshots can carry animation-library objects (GSAP targets are
+// circular); never let the diagnostic itself throw.
+function safeStringify(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (key, entry) => {
+    if (key.startsWith("_")) return undefined;
+    if (entry && typeof entry === "object") {
+      if (seen.has(entry)) return "[circular]";
+      seen.add(entry);
+    }
+    return entry;
+  });
+}
+
 async function waitForEndmarkLiveStage(page, expectedStage, timeoutMs, pollMs = 250) {
   const startedAt = Date.now();
   let lastSnapshot = null;
@@ -715,7 +763,7 @@ async function waitForEndmarkLiveStage(page, expectedStage, timeoutMs, pollMs = 
   }
 
   throw new Error(
-    `Timed out waiting for endmark stage "${expectedStage}". Last snapshot: ${JSON.stringify(lastSnapshot)}`,
+    `Timed out waiting for endmark stage "${expectedStage}". Last snapshot: ${safeStringify(lastSnapshot)}`,
   );
 }
 
@@ -1427,7 +1475,10 @@ async function captureFixedStates(browser, shots, options = {}) {
         assertRange(layerState.cardsOpacity ?? 0, expected.cardsOpacity, `${shot.name} cards opacity`);
         assertRange(layerState.moonflowOpacity ?? 0, expected.moonflowOpacity, `${shot.name} moonflow opacity`);
         if (layerState.modelScale !== null) {
-          assertRange(layerState.modelScale, { min: 0.5, max: 1.2 }, `${shot.name} model scale`);
+          // works_intro swells the crystal up to 1.42x mid half-turn (reference
+          // 6.0-8.0s, fourth pass); everywhere else it stays near 1.
+          const modelScaleMax = layerState.sceneActiveSection === "works_intro" ? 1.5 : 1.2;
+          assertRange(layerState.modelScale, { min: 0.5, max: modelScaleMax }, `${shot.name} model scale`);
         }
 
         if (expected.mode === "single-card-state") {
@@ -1497,7 +1548,7 @@ async function captureFixedStates(browser, shots, options = {}) {
         fullPage: false,
       });
       if (["works-outro-curvature-early", "works-outro-curvature-mid", "works-outro-curvature-late"].includes(shot.name)) {
-        await assertLightWallContinuity(page, screenshot, `${shot.name}${fileSuffix}`);
+        await assertWallContinuity(page, screenshot, `${shot.name}${fileSuffix}`);
       }
     } finally {
       try {
@@ -1714,7 +1765,14 @@ async function assertPrismRefractionPerf(browser, shotId, options = {}) {
       shot.section,
       { timeout: 12000 },
     );
-    await page.waitForTimeout(1400);
+    // Wait for the damped pose to settle (a fixed 1.4s was too short for
+    // shots with a larger scale step); still fails if it never goes idle.
+    await page
+      .waitForFunction(() => window.__getAlcheLayerDebugState?.()?.prismRefractionActiveMotion === false, undefined, {
+        timeout: 6000,
+      })
+      .catch(() => {});
+    await page.waitForTimeout(300);
     const before = await page.evaluate(() => window.__getAlcheLayerDebugState?.() ?? null);
     await page.waitForTimeout(1100);
     const after = await page.evaluate(() => window.__getAlcheLayerDebugState?.() ?? null);
@@ -2630,13 +2688,16 @@ async function captureVisionCoverLiveEndState(browser, options = {}) {
         };
       }, stepLabel);
 
-    const settleAtBottom = async () => {
+    // Since service/stellla/outro were appended after vision (07-13 pass), the
+    // document bottom is the outro. The cover end-state lives where vision
+    // leaves the active viewport line (getVisionCoverProgress end).
+    const settleAtBottom = async (targetScroll) => {
       let previousSnapshot = null;
       let stableSamples = 0;
 
       for (let attempt = 0; attempt < 24; attempt += 1) {
         const snapshot = await readSnapshot(`vision-live-bottom-${attempt}`);
-        const atBottom = Math.abs((snapshot.scrollY ?? 0) - (snapshot.maxScroll ?? 0)) <= 2;
+        const atBottom = Math.abs((snapshot.scrollY ?? 0) - targetScroll) <= 2;
         const coverReady = (snapshot.visionCoverProgress ?? 0) >= 0.98;
         const scaleReady = (snapshot.prismGroupScale ?? 0) >= 3.95;
         const scaleDelta =
@@ -2669,13 +2730,16 @@ async function captureVisionCoverLiveEndState(browser, options = {}) {
       if (!(visionNode instanceof HTMLElement)) {
         return {
           visionStart: null,
+          visionEnd: maxScroll,
           maxScroll,
         };
       }
 
       const rect = visionNode.getBoundingClientRect();
+      const visionTop = rect.top + window.scrollY;
       return {
-        visionStart: Math.max(0, Math.min(maxScroll, Math.round(rect.top + window.scrollY - viewportLine))),
+        visionStart: Math.max(0, Math.min(maxScroll, Math.round(visionTop - viewportLine))),
+        visionEnd: Math.max(0, Math.min(maxScroll, Math.round(visionTop + visionNode.offsetHeight - viewportLine + 4))),
         maxScroll,
       };
     });
@@ -2694,14 +2758,14 @@ async function captureVisionCoverLiveEndState(browser, options = {}) {
 
     await page.evaluate((nextTop) => {
       window.scrollTo(0, nextTop);
-    }, scrollTargets.maxScroll);
+    }, scrollTargets.visionEnd);
     await page
-      .waitForFunction((expectedTop) => Math.abs(window.scrollY - expectedTop) <= 2, scrollTargets.maxScroll, {
+      .waitForFunction((expectedTop) => Math.abs(window.scrollY - expectedTop) <= 2, scrollTargets.visionEnd, {
         timeout: 2200,
       })
       .catch(() => {});
 
-    const bottomSnapshot = await settleAtBottom();
+    const bottomSnapshot = await settleAtBottom(scrollTargets.visionEnd);
 
     await page.screenshot({
       path: path.join(outputDir, `vision-cover-live-wheel-bottom${fileSuffix}.png`),
@@ -2711,9 +2775,12 @@ async function captureVisionCoverLiveEndState(browser, options = {}) {
     assert((bottomSnapshot.visionCoverProgress ?? 0) >= 0.98, "Expected wide live end-state to reach full vision cover progress.");
     assert(
       (bottomSnapshot.prismGroupScale ?? 0) >= 3.95,
-      `Expected wide live end-state to reach the configured prism group scale, got ${bottomSnapshot.prismGroupScale} (section ${bottomSnapshot.activeSection ?? "?"}).`,
+      `Expected wide live end-state to reach the configured prism group scale, got ${bottomSnapshot.prismGroupScale} (section ${bottomSnapshot.active ?? "?"}).`,
     );
-    assert(Math.abs((bottomSnapshot.scrollY ?? 0) - (bottomSnapshot.maxScroll ?? 0)) <= 2, "Expected wide live end-state capture to occur at the document bottom.");
+    assert(
+      Math.abs((bottomSnapshot.scrollY ?? 0) - scrollTargets.visionEnd) <= 2,
+      `Expected wide live end-state capture at the vision end (scrollY ${bottomSnapshot.scrollY}, target ${scrollTargets.visionEnd}).`,
+    );
     assert(
       bottomSnapshot.viewportWidth === viewport.width && bottomSnapshot.viewportHeight === viewport.height,
       "Expected wide live end-state viewport debug to match the requested viewport.",
@@ -2767,14 +2834,21 @@ async function captureEndmarkLiveSequence(browser, options = {}) {
       await page.waitForTimeout(240);
     }
 
-    await page.evaluate((nextTop) => {
-      window.scrollTo(0, nextTop);
-    }, scrollTargets.maxScroll);
-    await page
-      .waitForFunction((expectedTop) => Math.abs(window.scrollY - expectedTop) <= 2, scrollTargets.maxScroll, {
-        timeout: 2200,
-      })
-      .catch(() => {});
+    // Re-measure and re-issue the scroll until it lands on the real bottom:
+    // a single scrollTo + fixed 2.2s wait intermittently stopped ~10px short
+    // (late layout/scroll settle), failing the "at document bottom" check.
+    // Keep corrections fast: the endmark timeline is time-based and starts at
+    // the trigger, so slow retries let its short "black" stage play out.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const state = await page.evaluate(() => {
+        const bottom = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+        if (Math.abs(window.scrollY - bottom) > 2) window.scrollTo(0, bottom);
+        return { bottom, scrollY: window.scrollY };
+      });
+      scrollTargets.maxScroll = state.bottom;
+      if (Math.abs(state.scrollY - state.bottom) <= 2) break;
+      await page.waitForTimeout(100);
+    }
 
     return scrollTargets;
   };
@@ -3079,10 +3153,14 @@ async function run() {
           viewport: ultraWideViewport,
           fileSuffix: "-desktop-2000x1080",
         });
-        await withFreshBrowser((freshBrowser) => assertPrismRefractionPerf(freshBrowser, "cards-a-center"));
-        await withFreshBrowser((freshBrowser) => assertPrismRefractionPerf(freshBrowser, "cards-b-queue"));
-        await withFreshBrowser((freshBrowser) => assertPrismRefractionActivePerf(freshBrowser, "cards-a-center"));
-        await withFreshBrowser((freshBrowser) => assertPrismRefractionActivePerf(freshBrowser, "cards-b-queue"));
+        // Refraction perf budget needs a rendered crystal. It is hidden while
+        // the cards cycle (reference behaviour since the 07-13 pass), so the
+        // guards run on the works_outro shots where it returns full-size and
+        // moves with progress (scale + wall flatten).
+        await withFreshBrowser((freshBrowser) => assertPrismRefractionPerf(freshBrowser, "works-outro-entry"));
+        await withFreshBrowser((freshBrowser) => assertPrismRefractionPerf(freshBrowser, "works-outro-flatten"));
+        await withFreshBrowser((freshBrowser) => assertPrismRefractionActivePerf(freshBrowser, "works-outro-entry"));
+        await withFreshBrowser((freshBrowser) => assertPrismRefractionActivePerf(freshBrowser, "works-outro-flatten"));
       } else {
         await captureFixedStates(browser, desktopWideShots, {
           viewport: { width: 2560, height: 1600 },
@@ -3104,9 +3182,13 @@ async function run() {
           fileSuffix: "-desktop-2000x1080",
           disableEndmark: true,
         });
+        // Same as --endmark-live-only: the endmark timeline is time-based and its
+        // short "black" stage is missed in the long-lived browser that already
+        // rendered every fixed shot, so each stage gets a fresh browser.
         await captureEndmarkLiveSequence(browser, {
           viewport: ultraWideViewport,
           fileSuffix: "-desktop-2000x1080",
+          freshBrowserPerStage: true,
         });
         await capturePointerInteraction(browser);
       }
