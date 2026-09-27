@@ -71,6 +71,9 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
     shader.uniforms.uChromaticStrength = uniforms.uChromaticStrength;
     shader.uniforms.uSceneRefractionMix = uniforms.uSceneRefractionMix;
     shader.uniforms.uVioletMix = uniforms.uVioletMix;
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "varying vec3 vAlcheLocal;\nvoid main() {")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n  vAlcheLocal = position;");
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "void main() {",
@@ -84,6 +87,12 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
           uniform float uChromaticStrength;
           uniform float uSceneRefractionMix;
           uniform float uVioletMix;
+          varying vec3 vAlcheLocal;
+
+          vec3 alcheIceSpectrum(float t) {
+            vec3 rgb = clamp(abs(mod(t * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            return rgb * rgb * (3.0 - 2.0 * rgb);
+          }
 
           float alcheIceHash(vec2 p) {
             p = fract(p * vec2(123.34, 345.45));
@@ -189,49 +198,98 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
             // (uSceneRefractionMix 0.28) keeps the legacy pale-ice read.
             float bodyMix = smoothstep(0.3, 0.95, sceneRefractionMix);
             if (bodyMix > 0.001) {
-              // Smooth low-frequency warp in the crystal's own uv space: the
-              // reference glass bends what is behind it into soft waves (zebra
-              // stripes visibly ripple). Screen-space per-pixel jitter read as
-              // speckle noise, so it is gone.
-              vec2 warpField = vec2(
-                alcheIceFbm(iceUv * 4.6 + vec2(3.1, 1.7)),
-                alcheIceFbm(iceUv * 4.6 + vec2(17.3, 9.2))
-              ) - 0.5;
-              vec2 frostJitter = warpField * 0.012;
-              vec2 bodyOffset = clamp(sceneOffset * 1.6 + warpField * 0.1 - paneUv * 0.04, vec2(-0.1), vec2(0.1));
-              vec3 refrA = texture2D(uSceneTexture, clamp(screenUv + bodyOffset + frostJitter, vec2(0.001), vec2(0.999))).rgb;
-              vec3 refrB = texture2D(uSceneTexture, clamp(screenUv + bodyOffset * 1.12 - frostJitter, vec2(0.001), vec2(0.999))).rgb;
-              vec3 refracted = (refrA + refrB) * 0.5;
-              float refrLum = dot(refracted, vec3(0.2126, 0.7152, 0.0722));
+              // Reference kv crystal (video 5.0s): CLEAR glass. The wall, grid
+              // and markers read straight through (slightly magnified); bright
+              // content behind it (the wordmark) breaks into a grainy white
+              // spray; bevel/tunnel faces carry rainbow dispersion and a thin
+              // specular line; the lower third is smoky.
+              vec3 nView = normalize(normal);
+              float faceOn = abs(nView.z);
+              float bevel = 1.0 - smoothstep(0.35, 0.85, faceOn);
+              // Model space: apex y 1.386, base y -0.693, half-width 1.2.
+              vec2 lp = vec2(vAlcheLocal.x / 1.2, (vAlcheLocal.y - 0.347) / 1.04);
+              float sprayField = alcheIceFbm(lp * 2.4 + vec2(4.1, 1.3));
+
+              vec2 lens = -lp * 0.03 + nView.xy * bevel * 0.07;
+              vec2 baseUv = screenUv + lens;
+              float sprayRadius = mix(0.003, 0.024, smoothstep(0.3, 0.72, sprayField)) * (1.0 - bevel * 0.6);
+
+              vec3 sprayMax = vec3(0.0);
+              vec3 sprayAvg = vec3(0.0);
+              for (int i = 0; i < 5; i++) {
+                float fi = float(i);
+                // Per-pixel white-noise seed (the value-noise hash on raw pixel
+                // coords was correlated and pushed every tap the same way).
+                vec2 pix = floor(gl_FragCoord.xy);
+                vec2 rnd = fract(sin(vec2(
+                  dot(pix + fi * 7.13, vec2(12.9898, 78.233)),
+                  dot(pix + fi * 3.71, vec2(39.3468, 11.1351))
+                )) * 43758.5453);
+                float ang = rnd.x * 6.28318;
+                vec2 tapUv = clamp(baseUv + vec2(cos(ang), sin(ang)) * sqrt(rnd.y) * sprayRadius, vec2(0.001), vec2(0.999));
+                vec3 tap = texture2D(uSceneTexture, tapUv).rgb;
+                sprayMax = max(sprayMax, tap);
+                sprayAvg += tap;
+              }
+              sprayAvg /= 5.0;
+              // Solid core, frayed edges: the unscattered sample always wins,
+              // so bright letters stay white inside and only spray outward.
+              vec3 glassCenter = texture2D(uSceneTexture, clamp(baseUv, vec2(0.001), vec2(0.999))).rgb;
+              vec3 glass = max(glassCenter, mix(sprayAvg, sprayMax, 0.6) * 0.92);
+
+              // Dispersion on the bevels: channel split along the face normal.
+              vec2 dispDir = nView.xy * bevel * 0.022 + vec2(0.0015, -0.001);
+              vec3 dispersed = vec3(
+                texture2D(uSceneTexture, clamp(baseUv + dispDir, vec2(0.001), vec2(0.999))).r,
+                texture2D(uSceneTexture, clamp(baseUv, vec2(0.001), vec2(0.999))).g,
+                texture2D(uSceneTexture, clamp(baseUv - dispDir, vec2(0.001), vec2(0.999))).b
+              );
+              glass = mix(glass, dispersed, bevel * 0.85);
+
               vec3 violet = mix(vec3(0.62, 0.62, 0.68), vec3(0.3, 0.13, 0.95), clamp(uVioletMix, 0.0, 1.0));
-              vec3 body = refracted * mix(vec3(1.0), violet * 1.25, 0.78) * 1.35 + violet * 0.05;
-              float frostMask = smoothstep(0.25, 0.85, refrLum) * smoothstep(0.45, 0.82, broadNoise);
-              body = mix(body, vec3(refrLum * 1.1) + violet * 0.08, frostMask * 0.4);
-              body += vec3(0.75, 0.72, 1.0) * refractionCaustic * 0.03;
-              // Glass lift: the crystal body sits a touch brighter than the
-              // wall seen through the hole so the frame reads as a solid.
-              body += violet * 0.09 * (0.6 + broadNoise * 0.8);
-              gl_FragColor.rgb = mix(gl_FragColor.rgb, body, bodyMix * 0.92);
+              // Very light tint: the glass passes the background colour.
+              glass *= vec3(0.95, 0.95, 1.05);
+              // Slight lift so the frame reads as a solid glass body.
+              glass += violet * 0.03 + vec3(0.012, 0.012, 0.03);
+
+              // Bevel faces: spectral sheen + specular line.
+              float viewSweep = dot(nView, normalize(vec3(0.3, 0.6, 0.75))) * 0.5 + 0.5;
+              vec3 spectrum = alcheIceSpectrum(fract(viewSweep * 1.6 + lp.y * 0.35 + 0.55));
+              glass += spectrum * bevel * 0.2;
+              glass += vec3(0.95, 0.97, 1.0) * pow(bevel, 3.0) * smoothstep(0.55, 0.95, viewSweep) * 0.45;
+
+              // Faint diagonal glint across the front face.
+              float glint = smoothstep(0.965, 1.0, sin((lp.x * 0.9 + lp.y) * 3.2 + 1.1) * 0.5 + 0.5);
+              glass += vec3(0.9, 0.93, 1.0) * glint * (1.0 - bevel) * 0.035;
+
+              // Smoky lower third.
+              float smoke = smoothstep(-0.35, -0.9, lp.y) * smoothstep(0.3, 0.72, alcheIceFbm(lp * 3.1 + vec2(9.0, 2.0)));
+              glass *= 1.0 - smoke * 0.35;
+
+              gl_FragColor.rgb = mix(gl_FragColor.rgb, glass, bodyMix);
             }
-            gl_FragColor.rgb += (chromaScene - directScene) * chromaMask * sceneRefractionMix * 0.72;
-            gl_FragColor.rgb += vec3(0.98, 1.0, 1.0) * iceBand * edgeSparkle * 0.095;
-            gl_FragColor.rgb += vec3(0.9, 0.97, 1.0) * iceBand * iceFresnel * 0.16;
-            gl_FragColor.rgb += vec3(0.9, 0.985, 1.0) * refractionCaustic * iceFresnel * 0.32;
+            // Legacy pale-ice extras: mission split mode only.
+            float legacyMix = 1.0 - bodyMix;
+            gl_FragColor.rgb += (chromaScene - directScene) * chromaMask * sceneRefractionMix * 0.72 * legacyMix;
+            gl_FragColor.rgb += vec3(0.98, 1.0, 1.0) * iceBand * edgeSparkle * 0.095 * legacyMix;
+            gl_FragColor.rgb += vec3(0.9, 0.97, 1.0) * iceBand * iceFresnel * 0.16 * legacyMix;
+            gl_FragColor.rgb += vec3(0.9, 0.985, 1.0) * refractionCaustic * iceFresnel * 0.32 * legacyMix;
             gl_FragColor.rgb += (grainNoise - 0.5) * vec3(0.004) * iceBaseAlpha;
             gl_FragColor.a = min(iceBaseAlpha + iceBaseAlpha * (iceBand * edgeSparkle * 0.025 + glassBorder * 0.14 + refractMask * 0.04), 0.6);
             // Refracted body already carries the background, so it can go
             // near-opaque (scaled by the fade-in opacity, target 0.62).
-            gl_FragColor.a = mix(gl_FragColor.a, clamp(iceBaseAlpha / 0.62, 0.0, 1.0) * 0.97, bodyMix);
+            gl_FragColor.a = mix(gl_FragColor.a, clamp(iceBaseAlpha / 0.62, 0.0, 1.0) * 0.99, bodyMix);
           #endif
-          gl_FragColor.rgb += vec3(0.52, 0.68, 0.82) * iceFresnel * 0.16;
-          gl_FragColor.rgb += vec3(0.96, 0.995, 1.0) * iceFresnel * 0.48;
+          float iceRimMix = 1.0 - smoothstep(0.3, 0.95, clamp(uSceneRefractionMix, 0.0, 1.0)) * 0.85;
+          gl_FragColor.rgb += vec3(0.52, 0.68, 0.82) * iceFresnel * 0.16 * iceRimMix;
+          gl_FragColor.rgb += vec3(0.96, 0.995, 1.0) * iceFresnel * 0.48 * iceRimMix;
           float iceAlphaCap = mix(0.6, 0.98, smoothstep(0.3, 0.95, clamp(uSceneRefractionMix, 0.0, 1.0)));
           gl_FragColor.a = min(gl_FragColor.a + iceBaseAlpha * iceFresnel * 0.09, iceAlphaCap);
           #include <dithering_fragment>
         `,
       );
   };
-  material.customProgramCacheKey = () => `alche-prism-ice:single-clear-gem:${uniforms.uClipMode.value}`;
+  material.customProgramCacheKey = () => `alche-prism-ice:clear-glass-spray:${uniforms.uClipMode.value}`;
   material.needsUpdate = true;
 
   return material;

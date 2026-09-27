@@ -4,6 +4,30 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Eleventh pass (2026-09-27): kv crystal = clear glass (reference video 5.0s)
+
+- Non-split body (`uSceneRefractionMix` ~1) rewritten in
+  `createPrismIceMaterial`: clear glass instead of a violet fill. Lens
+  magnification toward the crystal centre (`-lp * 0.03`, `lp` from a new
+  `vAlcheLocal` model-space varying) plus normal-driven bending on bevel
+  faces; 5-tap per-pixel white-noise "spray" blended toward the tap max with
+  the unscattered sample as a floor (solid letter cores, frayed grainy
+  edges), radius 0.003-0.024 modulated by low-frequency noise; RGB split
+  along the normal + spectral sheen + specular line on bevel/tunnel faces;
+  smoky lower third; faint diagonal glint. Legacy pale-ice extras and fresnel
+  rims now only apply in mission split mode.
+- Earlier fbm warp produced the "marble" look and displaced content; the
+  spray offset seen mid-pass was the spray radius (3% of screen) + averaged
+  taps dimming cores, not the capture (raw capture verified aligned).
+- `kvDepthScale` 0.55 -> 1 (tunnel walls form the visible bevel band now that
+  the body is clear).
+- Refraction capture budget 512/384 -> 1024/512 (idle/active) so the view
+  through the glass stays crisp; perf guards updated. The capture now also
+  hides `edgeScene` (edge lines were baked into the refraction texture).
+- Endmark live "black" capture runs at `alcheEndmarkTimeScale=0.25` (heavier
+  crystal rendering let the whole intro finish before the first sample).
+- Full suite green (27 min).
+
 ## Tenth pass (2026-09-27): validation back to all-green
 
 All green on a fresh export: `lint`, `typecheck`, `build`, `verify:static`,

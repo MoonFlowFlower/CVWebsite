@@ -182,8 +182,10 @@ function createPrismLogoLineArtPositions() {
   }
   return positions;
 }
-const ALCHE_TOP_PRISM_REFRACTION_IDLE_TARGET_MAX = 512;
-const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_TARGET_MAX = 384;
+// Clear-glass crystal shows the scene behind it almost 1:1, so the capture
+// needs enough resolution to stay crisp (512 read visibly blurry).
+const ALCHE_TOP_PRISM_REFRACTION_IDLE_TARGET_MAX = 1024;
+const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_TARGET_MAX = 512;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_INTERVAL = 1 / 30;
 const ALCHE_TOP_PRISM_REFRACTION_IDLE_INTERVAL = 0.5;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_HOLD = 0.18;
@@ -1733,8 +1735,12 @@ function CenterHeroModel({
       const previousXrEnabled = state.gl.xr.enabled;
       const previousShadowAutoUpdate = state.gl.shadowMap.autoUpdate;
       const previousShadedVisible = texturedScene.shadedScene.visible;
+      const previousEdgeVisible = texturedScene.edgeScene.visible;
 
+      // Hide the crystal's own body and edge lines so they are not baked into
+      // what is seen through the glass.
       texturedScene.shadedScene.visible = false;
+      texturedScene.edgeScene.visible = false;
       state.gl.xr.enabled = false;
       state.gl.shadowMap.autoUpdate = false;
       state.gl.autoClear = true;
@@ -1746,6 +1752,7 @@ function CenterHeroModel({
       state.gl.xr.enabled = previousXrEnabled;
       state.gl.shadowMap.autoUpdate = previousShadowAutoUpdate;
       texturedScene.shadedScene.visible = previousShadedVisible;
+      texturedScene.edgeScene.visible = previousEdgeVisible;
       texturedScene.prismIceUniforms.uSceneTexture.value = backgroundRenderTarget.texture;
     }
 

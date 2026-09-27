@@ -397,7 +397,9 @@ export const ALCHE_TOP_CENTER_MODEL = {
   depthOffset: 0.38,
   targetHeight: 2.3,
   // Front-facing depth multiplier (restored to 1 through the mission turn).
-  kvDepthScale: 0.55,
+  // 1 = full GLB depth: the clear-glass crystal needs the tunnel walls as a
+  // visible bevel band (0.55 was only needed while the body was opaque).
+  kvDepthScale: 1,
   // Outer side face that turns toward the camera after the +Y mission turn.
   // With the apex-up orientation (baseRotationZ 0) this is the left face; the
   // old +x normal landed on the back side and the visible slab stayed grey.
