@@ -124,10 +124,14 @@ export function AlcheTopPagePostProcessing({ sceneState }: AlcheTopPagePostProce
     resolution.set(size.width, size.height);
 
     const whiteMix = Math.max(sceneState.missionIn.whiteMix, sceneState.mission.whiteMix, sceneState.vision.densityMix * 0.42);
-    // Reference kv wordmark is crisp with only a soft halo.
-    bloomPass.strength = THREE.MathUtils.lerp(0.2, 0.04, whiteMix) * Math.max(sceneState.introProgress, 0.15);
-    bloomPass.radius = THREE.MathUtils.lerp(0.4, 0.14, whiteMix);
-    bloomPass.threshold = THREE.MathUtils.lerp(0.8, 0.97, whiteMix);
+    // Reference kv wordmark is crisp with no halo: keep the threshold above
+    // the wordmark's linear brightness (~0.92) so only hotter highlights
+    // (ice rims, specular lines) bloom.
+    bloomPass.strength = THREE.MathUtils.lerp(0.16, 0.04, whiteMix) * Math.max(sceneState.introProgress, 0.15);
+    bloomPass.radius = THREE.MathUtils.lerp(0.3, 0.14, whiteMix);
+    // Above the HDR wordmark (2.35) on the dark scene; only the ice rim
+    // highlights (~2.6+) catch a little bloom.
+    bloomPass.threshold = THREE.MathUtils.lerp(2.5, 0.98, whiteMix);
 
     finalPass.uniforms.uTime.value = state.clock.elapsedTime;
     finalPass.uniforms.uChromatic.value = 0.0;

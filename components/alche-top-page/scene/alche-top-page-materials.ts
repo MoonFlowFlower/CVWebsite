@@ -94,6 +94,26 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
             return rgb * rgb * (3.0 - 2.0 * rgb);
           }
 
+          float alcheIceSdTri(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+            vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2;
+            vec2 v0 = p - p0, v1 = p - p1, v2 = p - p2;
+            vec2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+            vec2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+            vec2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+            float sg = sign(e0.x * e2.y - e0.y * e2.x);
+            vec2 d = min(min(vec2(dot(pq0, pq0), sg * (v0.x * e0.y - v0.y * e0.x)),
+                             vec2(dot(pq1, pq1), sg * (v1.x * e1.y - v1.y * e1.x))),
+                             vec2(dot(pq2, pq2), sg * (v2.x * e2.y - v2.y * e2.x)));
+            return -sqrt(d.x) * sign(d.y);
+          }
+
+          float alcheIceEdgeDist(vec2 p) {
+            return min(
+              abs(alcheIceSdTri(p, vec2(0.0, 1.386), vec2(-1.2, -0.693), vec2(1.2, -0.693))),
+              abs(alcheIceSdTri(p, vec2(0.0, 0.596), vec2(-0.516, -0.298), vec2(0.516, -0.298)))
+            );
+          }
+
           float alcheIceHash(vec2 p) {
             p = fract(p * vec2(123.34, 345.45));
             p += dot(p, p + 34.345);
@@ -198,75 +218,102 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
             // (uSceneRefractionMix 0.28) keeps the legacy pale-ice read.
             float bodyMix = smoothstep(0.3, 0.95, sceneRefractionMix);
             if (bodyMix > 0.001) {
-              // Reference kv crystal (video 5.0s): CLEAR glass. The wall, grid
-              // and markers read straight through (slightly magnified); bright
-              // content behind it (the wordmark) breaks into a grainy white
-              // spray; bevel/tunnel faces carry rainbow dispersion and a thin
-              // specular line; the lower third is smoky.
+              // Clear bar ice (reference video 5.0s + user's MALT ICE photo):
+              // a clear softened core, crisp bright rims on every edge with a
+              // darker internal-reflection band inside, streaky milky frost
+              // (denser near edges/base) that diffuses bright content into a
+              // glow, sparse tiny bubbles, little dispersion.
               vec3 nView = normalize(normal);
               float faceOn = abs(nView.z);
               float bevel = 1.0 - smoothstep(0.35, 0.85, faceOn);
+              vec2 mp = vAlcheLocal.xy;
               // Model space: apex y 1.386, base y -0.693, half-width 1.2.
-              vec2 lp = vec2(vAlcheLocal.x / 1.2, (vAlcheLocal.y - 0.347) / 1.04);
-              float sprayField = alcheIceFbm(lp * 2.4 + vec2(4.1, 1.3));
+              vec2 lp = vec2(mp.x / 1.2, (mp.y - 0.347) / 1.04);
 
-              vec2 lens = -lp * 0.03 + nView.xy * bevel * 0.07;
-              vec2 baseUv = screenUv + lens;
-              float sprayRadius = mix(0.003, 0.024, smoothstep(0.3, 0.72, sprayField)) * (1.0 - bevel * 0.6);
+              // Distance to the nearest logo edge (outer or inner triangle).
+              float dOuter = alcheIceSdTri(mp, vec2(0.0, 1.386), vec2(-1.2, -0.693), vec2(1.2, -0.693));
+              float dInner = alcheIceSdTri(mp, vec2(0.0, 0.596), vec2(-0.516, -0.298), vec2(0.516, -0.298));
+              float dEdge = min(abs(dOuter), abs(dInner));
+              vec2 eps = vec2(0.01, 0.0);
+              vec2 edgeGrad = vec2(
+                alcheIceEdgeDist(mp + eps.xy) - alcheIceEdgeDist(mp - eps.xy),
+                alcheIceEdgeDist(mp + eps.yx) - alcheIceEdgeDist(mp - eps.yx)
+              );
+              vec2 edgeDir = normalize(edgeGrad + vec2(1e-5));
+              float edgeProx = 1.0 - smoothstep(0.0, 0.14, dEdge);
 
-              vec3 sprayMax = vec3(0.0);
-              vec3 sprayAvg = vec3(0.0);
-              for (int i = 0; i < 5; i++) {
-                float fi = float(i);
-                // Per-pixel white-noise seed (the value-noise hash on raw pixel
-                // coords was correlated and pushed every tap the same way).
-                vec2 pix = floor(gl_FragCoord.xy);
-                vec2 rnd = fract(sin(vec2(
-                  dot(pix + fi * 7.13, vec2(12.9898, 78.233)),
-                  dot(pix + fi * 3.71, vec2(39.3468, 11.1351))
-                )) * 43758.5453);
-                float ang = rnd.x * 6.28318;
-                vec2 tapUv = clamp(baseUv + vec2(cos(ang), sin(ang)) * sqrt(rnd.y) * sprayRadius, vec2(0.001), vec2(0.999));
-                vec3 tap = texture2D(uSceneTexture, tapUv).rgb;
-                sprayMax = max(sprayMax, tap);
-                sprayAvg += tap;
+              // Clear core: slight magnification + gentle softening.
+              vec2 baseUv = screenUv - lp * 0.025 + nView.xy * bevel * 0.06;
+              vec3 core = texture2D(uSceneTexture, clamp(baseUv, vec2(0.001), vec2(0.999))).rgb * 0.4;
+              for (int i = 0; i < 4; i++) {
+                float a = float(i) * 1.5708 + 0.4;
+                core += texture2D(uSceneTexture, clamp(baseUv + vec2(cos(a), sin(a)) * 0.0022, vec2(0.001), vec2(0.999))).rgb * 0.15;
               }
-              sprayAvg /= 5.0;
-              // Solid core, frayed edges: the unscattered sample always wins,
-              // so bright letters stay white inside and only spray outward.
-              vec3 glassCenter = texture2D(uSceneTexture, clamp(baseUv, vec2(0.001), vec2(0.999))).rgb;
-              vec3 glass = max(glassCenter, mix(sprayAvg, sprayMax, 0.6) * 0.92);
+              // The capture is 8-bit, so the HDR wordmark clips to 1.0 there;
+              // re-expand clipped highlights so letters behind the ice stay
+              // white after the composite's centre darkening.
+              float coreLum = dot(core, vec3(0.2126, 0.7152, 0.0722));
+              vec3 ice = core * (1.0 + smoothstep(0.72, 0.98, coreLum) * 1.35);
 
-              // Dispersion on the bevels: channel split along the face normal.
-              vec2 dispDir = nView.xy * bevel * 0.022 + vec2(0.0015, -0.001);
+              // Internal reflection near the rims: a shifted second image.
+              vec3 reflected = texture2D(uSceneTexture, clamp(baseUv - edgeDir * 0.04, vec2(0.001), vec2(0.999))).rgb;
+              ice = mix(ice, reflected, edgeProx * 0.35 * (1.0 - bevel));
+
+              // Streaky milky frost: long diagonal streaks, denser near the
+              // edges and the base, diffusing bright content into a glow.
+              float streak = alcheIceFbm(vec2(lp.x * 1.4 + lp.y * 5.5, lp.y * 0.9 - lp.x * 0.6) * 2.2 + vec2(3.0, 7.0));
+              float baseFrost = smoothstep(-0.2, -0.95, lp.y);
+              float frost = clamp(smoothstep(0.42, 0.82, streak) * (0.35 + edgeProx * 0.65) + baseFrost * 0.55, 0.0, 1.0);
+              vec3 diffuse = vec3(0.0);
+              for (int i = 0; i < 8; i++) {
+                float a = float(i) * 0.7854;
+                float r = (i < 4 ? 0.009 : 0.022);
+                diffuse += texture2D(uSceneTexture, clamp(baseUv + vec2(cos(a + 0.3), sin(a + 0.3)) * r, vec2(0.001), vec2(0.999))).rgb;
+              }
+              diffuse /= 8.0;
+              vec3 frosted = diffuse * 1.15 + vec3(0.03, 0.035, 0.05);
+              ice = mix(ice, frosted, frost * 0.7);
+              // Bright content (the wordmark) blooms softly inside the ice.
+              float diffuseLum = dot(diffuse, vec3(0.2126, 0.7152, 0.0722));
+              ice += vec3(0.8, 0.86, 1.0) * smoothstep(0.25, 1.6, diffuseLum) * (0.5 + frost * 0.9);
+
+              // Sparse tiny bubbles (static in model space).
+              vec2 bubbleCell = floor(mp * 38.0);
+              vec2 bubbleLocal = fract(mp * 38.0) - 0.5;
+              vec2 bubbleJit = vec2(alcheIceHash(bubbleCell + 1.7), alcheIceHash(bubbleCell + 9.3)) - 0.5;
+              float bubbleOn = step(0.82, alcheIceHash(bubbleCell + 4.1));
+              float bubbleSize = mix(0.05, 0.13, alcheIceHash(bubbleCell + 2.2));
+              float bubbleD = length(bubbleLocal - bubbleJit * 0.6);
+              float bubble = bubbleOn * (1.0 - smoothstep(bubbleSize * 0.5, bubbleSize, bubbleD));
+              ice += vec3(0.85, 0.9, 1.0) * bubble * (0.5 + frost * 0.4) * (1.0 - bevel);
+
+              // Rims: crisp bright line on every edge, darker band just inside
+              // (thickness read), brighter on edges facing the key light.
+              float rimLight = 0.55 + 0.45 * max(dot(edgeDir, normalize(vec2(-0.5, 0.85))), 0.0);
+              float rim = 1.0 - smoothstep(0.003, 0.013, dEdge);
+              float innerBand = smoothstep(0.02, 0.045, dEdge) * (1.0 - smoothstep(0.05, 0.11, dEdge));
+              ice *= 1.0 - innerBand * 0.28 * (1.0 - bevel);
+              // HDR: centre of screen is scaled ~0.41 by the final composite.
+              ice += vec3(0.95, 0.97, 1.0) * rim * rimLight * 1.9 * (1.0 - bevel);
+
+              // Bevel/tunnel faces: bright icy reflection, faint dispersion.
+              vec2 dispDir = nView.xy * bevel * 0.012;
               vec3 dispersed = vec3(
                 texture2D(uSceneTexture, clamp(baseUv + dispDir, vec2(0.001), vec2(0.999))).r,
-                texture2D(uSceneTexture, clamp(baseUv, vec2(0.001), vec2(0.999))).g,
+                ice.g,
                 texture2D(uSceneTexture, clamp(baseUv - dispDir, vec2(0.001), vec2(0.999))).b
               );
-              glass = mix(glass, dispersed, bevel * 0.85);
-
-              vec3 violet = mix(vec3(0.62, 0.62, 0.68), vec3(0.3, 0.13, 0.95), clamp(uVioletMix, 0.0, 1.0));
-              // Very light tint: the glass passes the background colour.
-              glass *= vec3(0.95, 0.95, 1.05);
-              // Slight lift so the frame reads as a solid glass body.
-              glass += violet * 0.03 + vec3(0.012, 0.012, 0.03);
-
-              // Bevel faces: spectral sheen + specular line.
               float viewSweep = dot(nView, normalize(vec3(0.3, 0.6, 0.75))) * 0.5 + 0.5;
-              vec3 spectrum = alcheIceSpectrum(fract(viewSweep * 1.6 + lp.y * 0.35 + 0.55));
-              glass += spectrum * bevel * 0.2;
-              glass += vec3(0.95, 0.97, 1.0) * pow(bevel, 3.0) * smoothstep(0.55, 0.95, viewSweep) * 0.45;
+              vec3 bevelIce = dispersed * 0.8 + vec3(0.1, 0.11, 0.14)
+                + alcheIceSpectrum(fract(viewSweep * 1.4 + lp.y * 0.3 + 0.55)) * 0.06
+                + vec3(0.95, 0.97, 1.0) * smoothstep(0.55, 0.95, viewSweep) * 1.1;
+              ice = mix(ice, bevelIce, bevel);
 
-              // Faint diagonal glint across the front face.
-              float glint = smoothstep(0.965, 1.0, sin((lp.x * 0.9 + lp.y) * 3.2 + 1.1) * 0.5 + 0.5);
-              glass += vec3(0.9, 0.93, 1.0) * glint * (1.0 - bevel) * 0.035;
+              // Cool, barely tinted ice.
+              vec3 violet = mix(vec3(0.62, 0.62, 0.68), vec3(0.3, 0.13, 0.95), clamp(uVioletMix, 0.0, 1.0));
+              ice = ice * vec3(0.96, 0.98, 1.03) + violet * 0.012;
 
-              // Smoky lower third.
-              float smoke = smoothstep(-0.35, -0.9, lp.y) * smoothstep(0.3, 0.72, alcheIceFbm(lp * 3.1 + vec2(9.0, 2.0)));
-              glass *= 1.0 - smoke * 0.35;
-
-              gl_FragColor.rgb = mix(gl_FragColor.rgb, glass, bodyMix);
+              gl_FragColor.rgb = mix(gl_FragColor.rgb, ice, bodyMix);
             }
             // Legacy pale-ice extras: mission split mode only.
             float legacyMix = 1.0 - bodyMix;
@@ -289,7 +336,7 @@ export function createPrismIceMaterial(map: THREE.Texture, uniforms: PrismIceUni
         `,
       );
   };
-  material.customProgramCacheKey = () => `alche-prism-ice:clear-glass-spray:${uniforms.uClipMode.value}`;
+  material.customProgramCacheKey = () => `alche-prism-ice:bar-ice:${uniforms.uClipMode.value}`;
   material.needsUpdate = true;
 
   return material;
@@ -461,10 +508,12 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
           gridUv.x * ${(ALCHE_TOP_MEDIA_WALL.cellColumns * ALCHE_TOP_WALL_TILE_DENSITY).toFixed(1)},
           gridUv.y * ${(ALCHE_TOP_MEDIA_WALL.cellRows * ALCHE_TOP_WALL_TILE_DENSITY).toFixed(1)}
         ) * tileDensityMul;
+        // Panel frames stay at the base density (reference kv panels are ~2x
+        // larger than the 1.75x lattice); only the LED dot lattice is finer.
         vec2 frameGridUv = vec2(
           gridUv.x * ${ALCHE_TOP_MEDIA_WALL.cellColumns.toFixed(1)},
           gridUv.y * ${ALCHE_TOP_MEDIA_WALL.cellRows.toFixed(1)}
-        ) * tileDensityMul;
+        );
         float microV = linePulse(microGridUv.x, 1.05);
         float microH = linePulse(microGridUv.y, 1.05);
         float frameV = linePulse(frameGridUv.x, 1.75);
@@ -530,6 +579,18 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
         float zebraMix = smoothstep(0.0, 1.0, clamp(uZebra, 0.0, 1.0));
         darkColor += violetHaze * centerGlow * (0.55 + dotField * 0.45) * (1.0 - zebraMix);
         darkColor += violetCore * glowCore * (0.35 + dotField * 0.35) * (1.0 - zebraMix);
+
+        // Lit LED content (reference video 4.4-6.4s): many panels glow a
+        // medium blue-violet, others stay dark navy; brightness varies per
+        // panel and per 2x2 block and drifts slowly. Brighter toward centre.
+        vec2 ledBlockId = floor(frameGridUv / 3.0);
+        float ledBlockVar = wallHash21(ledBlockId + vec2(13.1, 4.7));
+        float ledLit = smoothstep(0.45, 0.95, tileVar * 0.3 + ledBlockVar * 0.7);
+        ledLit *= 0.78 + 0.22 * sin(uTime * 0.3 + ledBlockVar * 6.2831);
+        vec2 ledCentered = vec2((uv.x - 0.5) * 2.2, (uv.y - 0.5) * 3.4);
+        float ledFalloff = 0.35 + 0.65 * exp(-dot(ledCentered, ledCentered) * 1.1);
+        vec3 ledColor = mix(vec3(0.003, 0.003, 0.016), vec3(0.045, 0.035, 0.27), ledLit);
+        darkColor += ledColor * ledFalloff * (0.7 + dotField * 0.5) * (1.0 - zebraMix);
 
         // Works-entry LED content (reference 7.5-9.0s): bold warped
         // greyscale zebra bands drifting diagonally across the tiles.

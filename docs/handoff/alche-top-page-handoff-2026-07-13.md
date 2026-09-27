@@ -4,6 +4,33 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Twelfth pass (2026-09-27): bar-ice crystal, lit LED wall, halo-free wordmark
+
+- User direction: crystal should read like clear bar ice (reference photo:
+  hand-held MALT ICE block), not dusty glass. `createPrismIceMaterial` body
+  now: clear softened core with slight lens; internal-reflection second image
+  near edges; streaky milky frost (fbm, denser near edges/base) diffusing
+  bright content into a glow; sparse static bubbles (model-space cells);
+  crisp HDR rim on every logo edge (analytic triangle SDF of outer + inner
+  triangle, `alcheIceSdTri`/`alcheIceEdgeDist`) with a darker band inside;
+  bevel faces bright/icy with faint dispersion. The grainy spray is gone.
+- 8-bit refraction capture clips the HDR wordmark; clipped highlights are
+  re-expanded inside the ice so letters behind it stay white.
+- **Final composite darkens the screen centre to ~0.41x** (`vignette`
+  smoothstep in `FinalCompositeShader` is effectively inverted). Not changed
+  (it shapes the whole look), but anything that must read pure white at the
+  centre is emitted HDR: wordmark `TITLE_COLOR` 2.35 (dim variant 0.36x),
+  ice rims ~1.9-2.2.
+- Bloom threshold 0.8 -> 2.5 on the dark scene (above the HDR wordmark), so
+  the wordmark has no halo; only hotter ice highlights bloom.
+- Wall: lit LED content layer (blue-violet 3x3-panel clusters, brightness
+  varying per panel/block, slow drift, brighter toward centre); panel frame
+  grid back to base density (the 1.75x multiplier now only affects the LED
+  dot lattice), matching the reference's larger panels.
+- Validator: wall-continuity contrast excludes near-white (luma > 200)
+  specular pixels (the ice rim crosses the upper-centre sample).
+- Full suite green (35 min).
+
 ## Eleventh pass (2026-09-27): kv crystal = clear glass (reference video 5.0s)
 
 - Non-split body (`uSceneRefractionMix` ~1) rewritten in

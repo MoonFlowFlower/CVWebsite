@@ -470,7 +470,11 @@ function CurvedMediaWall({ sceneState, wallTexturePath, worksCardItems, wallMedi
   );
 }
 
-const TITLE_DIM_COLOR = new THREE.Color(0x6c6f78);
+// HDR white: the final composite multiplies the screen centre by ~0.41 (see
+// handoff: inverted vignette), so the wordmark is emitted at ~2.35x to land
+// pure white there without relying on bloom (which caused the halo).
+const TITLE_COLOR = new THREE.Color(2.35, 2.35, 2.4);
+const TITLE_DIM_COLOR = TITLE_COLOR.clone().multiplyScalar(0.36);
 
 function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneSystemProps) {
   const { camera, size } = useThree();
@@ -482,7 +486,7 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     [effectiveRadius],
   );
   const measuredWidthRef = useRef(1);
-  const titleColorRef = useRef(new THREE.Color(0xf6f8ff));
+  const titleColorRef = useRef(TITLE_COLOR.clone());
   const textReadyRef = useRef(false);
   const text = useMemo(() => new Text(), []);
 
@@ -496,12 +500,12 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     text.textAlign = "center";
     text.whiteSpace = "nowrap";
     text.letterSpacing = ALCHE_TOP_MOONFLOW.letterSpacing;
-    text.color = 0xf6f8ff;
+    text.color = TITLE_COLOR.clone();
     text.fillOpacity = 0;
     // Only the 500 weight ships; a same-colour SDF outline thickens the
     // strokes toward the reference's heavy geometric wordmark.
     text.outlineWidth = ALCHE_TOP_MOONFLOW.strokeBoldWidth;
-    text.outlineColor = 0xf6f8ff;
+    text.outlineColor = TITLE_COLOR.clone();
     text.outlineOpacity = 0;
     text.outlineBlur = 0;
     (text.material as THREE.Material & { toneMapped?: boolean }).toneMapped = false;
@@ -536,8 +540,8 @@ function MoonflowTitle({ sceneState, worksWordHandoff, layerDebugRef }: KvSceneS
     // Reference 6.5-7.0s: the wordmark greys out while the crystal turns,
     // before it fades behind the works wall.
     const dimMix = smoothstep(remapRange(handoff, 0.03, 0.16));
-    titleColorRef.current.setHex(0xf6f8ff).lerp(TITLE_DIM_COLOR, dimMix);
-    textRef.current.color = titleColorRef.current.getHex();
+    titleColorRef.current.copy(TITLE_COLOR).lerp(TITLE_DIM_COLOR, dimMix);
+    textRef.current.color = titleColorRef.current;
     textRef.current.outlineColor = textRef.current.color;
     const distance = perspectiveCamera.position.distanceTo(targetPosition);
     const viewportHeight = 2 * Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov * 0.5)) * distance;

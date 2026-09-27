@@ -482,6 +482,7 @@ async function assertWallContinuity(page, screenshotBuffer, label) {
         const totalPixels = width * height;
         let lumaSum = 0;
         let lumaSqSum = 0;
+        let lumaCount = 0;
         let emptyColumns = 0;
 
         for (let column = 0; column < width; column += 1) {
@@ -492,15 +493,20 @@ async function assertWallContinuity(page, screenshotBuffer, label) {
             const green = pixels[index + 1];
             const blue = pixels[index + 2];
             const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
-            lumaSum += luma;
-            lumaSqSum += luma * luma;
+            // Seams/shadows are dark contrast. Near-white specular pixels (the
+            // ice crystal's rim highlights crossing the sample) are excluded.
+            if (luma <= 200) {
+              lumaSum += luma;
+              lumaSqSum += luma * luma;
+              lumaCount += 1;
+            }
             if (pixels[index + 3] > 180 && Math.max(red, green, blue) < 6 /* bare clear colour; dim wall edges peak >= 6 */) emptyPixels += 1;
           }
           if (emptyPixels / height >= 0.98) emptyColumns += 1;
         }
 
-        const lumaMean = lumaSum / totalPixels;
-        const variance = Math.max(0, lumaSqSum / totalPixels - lumaMean * lumaMean);
+        const lumaMean = lumaSum / Math.max(lumaCount, 1);
+        const variance = Math.max(0, lumaSqSum / Math.max(lumaCount, 1) - lumaMean * lumaMean);
         return {
           name: region.name,
           emptyColumnRatio: emptyColumns / width,
