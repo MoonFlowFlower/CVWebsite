@@ -4,6 +4,30 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Thirteenth pass (2026-09-27): screen-space transmission crystal
+
+- Studied the reference site's compiled shaders (captured via a WebGL
+  `shaderSource` hook in headless Chromium; analysis artefacts only in
+  `.playwright-artifacts/alche-ref-capture/`, gitignored, nothing copied into
+  the site). Their logo: opaque mesh whose colour is the background texture
+  re-sampled through it; normal-driven screen offset; 8 per-pixel random
+  samples jittered inside noise-driven rough patches (the "spray"); per-channel
+  slide 1/2/4x for dispersion; tight GGX key-light specular; fresnel (f0 0.1)
+  env reflection; smooth-bevelled ~7.7k-vertex logo mesh.
+- Our implementation: `createPrismIceMaterial` non-split body rewritten on
+  that technique with procedural noise (`alcheIceFbm`) and a procedural studio
+  environment (`alcheIceStudio`) instead of their textures. Transmitted light
+  is capped at 2.35 (just under bloom threshold 2.5) so letters behind the
+  glass are blown white without a halo; only specular glints bloom.
+- Geometry: `createPrismCrystalBodyGeometry` (ExtrudeGeometry of the shared
+  logo outline incl. base notch, bevel 6 segments, negative bevel offset keeps
+  the GLB silhouette) replaces the 12-vertex GLB for the full-render body only;
+  scale/centre are measured on the GLB (edge scene) so line-art/rainbow layers
+  stay aligned. Crystal wireframe edges off in full mode.
+- Refraction capture is now `HalfFloatType` / linear (8-bit clipped the HDR
+  wordmark), so the previous highlight re-expansion hack is gone.
+- Full suite green (38 min).
+
 ## Twelfth pass (2026-09-27): bar-ice crystal, lit LED wall, halo-free wordmark
 
 - User direction: crystal should read like clear bar ice (reference photo:

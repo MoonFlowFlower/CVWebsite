@@ -114,7 +114,8 @@ interface CenterHeroRenderState {
 }
 
 const ALCHE_TOP_PRISM_ICE_OPACITY = 0.62;
-const ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY = 0.62;
+// Reference kv crystal has no wireframe; edges come from the bevel shading.
+const ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY = 0;
 const ALCHE_TOP_PRISM_CRYSTAL_EDGE_COLOR = "#e8fbff";
 // Reference mission line-art (滚动stage6 / video 15.0s): crisp white strokes
 // on the light paper, no hatch fill.
@@ -129,7 +130,9 @@ const ALCHE_TOP_PRISM_CRYSTAL_EDGE_WIDTH_PX = 1.2;
  * lacks: the base steps up 3.5% of the height across ~19-81% of its width
  * (measured on 滚动stage6). Returns flat segment pairs for LineSegmentsGeometry.
  */
-function createPrismLogoLineArtPositions() {
+/** Logo outline in GLB model space: outer path (with the brand-mark base
+ * notch) and inner triangle. Shared by the mission line-art and the kv body. */
+function getPrismLogoOutline() {
   const apexY = 1.386;
   const baseY = -0.693;
   const halfWidth = 1.2;
@@ -162,6 +165,41 @@ function createPrismLogoLineArtPositions() {
     [-halfWidth, baseY],
   ];
 
+  return { outerPath, inner, apexY, baseY, halfWidth };
+}
+
+/**
+ * Bevelled crystal body for the kv render (the GLB is a 12-vertex flat
+ * extrusion). The screen-space transmission shader bends the background by
+ * the surface normal, so the bevel band is where displacement, dispersion
+ * and specular highlights happen. Same model space and silhouette as the GLB
+ * (negative bevel offset keeps the outline), so scale/centring are shared.
+ */
+function createPrismCrystalBodyGeometry() {
+  const { outerPath, inner } = getPrismLogoOutline();
+  const shape = new THREE.Shape(outerPath.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)));
+  shape.holes.push(new THREE.Path(inner.map(([x, y]) => new THREE.Vector2(x, y))));
+  const depth = 0.66;
+  const bevelThickness = 0.11;
+  const bevelSize = 0.07;
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    steps: 1,
+    curveSegments: 1,
+    bevelEnabled: true,
+    bevelThickness,
+    bevelSize,
+    bevelOffset: -bevelSize,
+    bevelSegments: 6,
+  });
+  geometry.translate(0, 0, -depth * 0.5);
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function createPrismLogoLineArtPositions() {
+  const { outerPath, inner, apexY, baseY, halfWidth } = getPrismLogoOutline();
   const positions: number[] = [];
   const pushPath = (path: number[][], z: number, closed: boolean) => {
     const count = closed ? path.length : path.length - 1;
@@ -1196,13 +1234,15 @@ function CenterHeroModel({
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
-      type: THREE.UnsignedByteType,
+      // Half float: the wordmark is HDR white; 8-bit clipped it and letters
+      // behind the crystal went grey.
+      type: THREE.HalfFloatType,
       depthBuffer: true,
       stencilBuffer: false,
       generateMipmaps: false,
     });
     target.texture.name = "alche-prism-background-refraction";
-    target.texture.colorSpace = THREE.SRGBColorSpace;
+    target.texture.colorSpace = THREE.LinearSRGBColorSpace;
     return target;
   }, []);
   const drawingBufferSize = useMemo(() => new THREE.Vector2(1, 1), []);
@@ -1278,12 +1318,14 @@ function CenterHeroModel({
     const prismIceMaterial = createPrismIceMaterial(iceTexture, prismIceUniforms);
     shadedMaterials.push(prismIceMaterial);
 
+    const crystalBodyGeometry = createPrismCrystalBodyGeometry();
     shadedScene.traverse((child) => {
       if (!("isMesh" in child) || child.isMesh !== true) return;
       const mesh = child as THREE.Mesh;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.renderOrder = 4;
+      mesh.geometry = crystalBodyGeometry;
       mesh.material = prismIceMaterial;
       shadedGeometries.add(mesh.geometry as THREE.BufferGeometry);
     });
@@ -1332,7 +1374,9 @@ function CenterHeroModel({
       mesh.material = rainbowMaterial;
     });
 
-    const bounds = new THREE.Box3().setFromObject(shadedScene);
+    // Measured on the GLB (edge scene) so the bevelled body shares the exact
+    // scale/centre of the line-art and rainbow layers.
+    const bounds = new THREE.Box3().setFromObject(edgeScene);
     const size = new THREE.Vector3();
     bounds.getSize(size);
     const modelHeight = Math.max(size.y, 0.0001);
@@ -1341,7 +1385,7 @@ function CenterHeroModel({
     edgeScene.scale.setScalar(scale);
     maskedLineArtScene.scale.setScalar(scale);
     rainbowScene.scale.setScalar(scale);
-    bounds.setFromObject(shadedScene);
+    bounds.setFromObject(edgeScene);
     const center = bounds.getCenter(new THREE.Vector3());
     shadedScene.position.sub(center);
     edgeScene.position.sub(center);
