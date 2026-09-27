@@ -2847,7 +2847,7 @@ async function captureEndmarkLiveSequence(browser, options = {}) {
   );
   assert(
     Math.abs((blackCapture.stageSnapshot.scrollY ?? 0) - (blackCapture.stageSnapshot.maxScroll ?? 0)) <= 2,
-    "Expected live endmark black capture to occur at the document bottom.",
+    `Expected live endmark black capture to occur at the document bottom (scrollY ${blackCapture.stageSnapshot.scrollY}, maxScroll ${blackCapture.stageSnapshot.maxScroll}, initial target ${blackCapture.scrollTargets?.maxScroll}).`,
   );
   assert(blackCapture.stageSnapshot.footerVisible === false, "Expected live endmark black capture to keep footer hidden.");
 

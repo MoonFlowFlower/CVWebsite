@@ -893,7 +893,9 @@
 
 .sectionCopy {
   position: absolute;
-  z-index: 8;
+  /* Same layer as .edgeOverlayLayer but later in the DOM: the black copy
+     bars cover the mission line-art, as in the reference. */
+  z-index: 9;
   display: grid;
   gap: 0.85rem;
   max-width: min(46rem, calc(100vw - 6rem));

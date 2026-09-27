@@ -4,6 +4,9 @@ import { useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { Text, configureTextBuilder } from "troika-three-text";
 
 import {
@@ -88,11 +91,11 @@ interface CenterHeroRenderState {
   iceTexture: THREE.Texture;
   shadedMaterials: THREE.MeshStandardMaterial[];
   hiddenMaterial: THREE.MeshBasicMaterial;
-  edgeMaterial: THREE.LineBasicMaterial;
+  edgeMaterial: LineMaterial;
   maskedLineArtMaterial: THREE.ShaderMaterial;
   rainbowMaterial: THREE.ShaderMaterial;
   shadedGeometries: Set<THREE.BufferGeometry>;
-  edgeGeometries: THREE.EdgesGeometry[];
+  edgeGeometries: THREE.BufferGeometry[];
   prismIceUniforms: PrismIceUniforms;
   sceneTextureFallback: THREE.DataTexture;
   maskedLineArtUniforms: MaskedPrismLineArtUniforms;
@@ -102,7 +105,72 @@ interface CenterHeroRenderState {
 const ALCHE_TOP_PRISM_ICE_OPACITY = 0.62;
 const ALCHE_TOP_PRISM_CRYSTAL_EDGE_OPACITY = 0.62;
 const ALCHE_TOP_PRISM_CRYSTAL_EDGE_COLOR = "#e8fbff";
-const ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR = "#707985";
+// Reference mission line-art (滚动stage6 / video 15.0s): crisp white strokes
+// on the light paper, no hatch fill.
+const ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR = "#ffffff";
+const ALCHE_TOP_PRISM_EDGE_OVERLAY_WIDTH_PX = 2.6;
+const ALCHE_TOP_PRISM_CRYSTAL_EDGE_WIDTH_PX = 1.2;
+
+/**
+ * Logo line-art for the mission overlay, in the GLB's model space (outer
+ * apex (0, 1.386), base y -0.693, half-width 1.2; inner triangle at 43%;
+ * faces at z = +-0.5). Adds the brand-mark base notch the plain GLB frame
+ * lacks: the base steps up 3.5% of the height across ~19-81% of its width
+ * (measured on 滚动stage6). Returns flat segment pairs for LineSegmentsGeometry.
+ */
+function createPrismLogoLineArtPositions() {
+  const apexY = 1.386;
+  const baseY = -0.693;
+  const halfWidth = 1.2;
+  const notchRise = 0.073;
+  const notchHalfSpan = 0.74;
+  const notchEase = 0.07;
+  const inner = [
+    [0, 0.596],
+    [-0.516, -0.298],
+    [0.516, -0.298],
+  ];
+
+  // Smooth S-step between (x0, y0) and (x1, y1) (cubic ease, 6 samples).
+  const step = (x0: number, y0: number, x1: number, y1: number) => {
+    const points: number[][] = [];
+    for (let i = 0; i <= 6; i += 1) {
+      const t = i / 6;
+      const eased = t * t * (3 - 2 * t);
+      points.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * eased]);
+    }
+    return points;
+  };
+
+  const outerPath: number[][] = [
+    [-halfWidth, baseY],
+    ...step(-notchHalfSpan - notchEase, baseY, -notchHalfSpan + notchEase * 0.4, baseY + notchRise),
+    ...step(notchHalfSpan - notchEase * 0.4, baseY + notchRise, notchHalfSpan + notchEase, baseY),
+    [halfWidth, baseY],
+    [0, apexY],
+    [-halfWidth, baseY],
+  ];
+
+  const positions: number[] = [];
+  const pushPath = (path: number[][], z: number, closed: boolean) => {
+    const count = closed ? path.length : path.length - 1;
+    for (let i = 0; i < count; i += 1) {
+      const a = path[i];
+      const b = path[(i + 1) % path.length];
+      positions.push(a[0], a[1], z, b[0], b[1], z);
+    }
+  };
+
+  for (const z of [0.5, -0.5]) {
+    pushPath(outerPath, z, false);
+    pushPath(inner, z, true);
+  }
+  // Depth edges at the outer and inner corners.
+  for (const [x, y] of [[0, apexY], [-halfWidth, baseY], [halfWidth, baseY], ...inner]) {
+    positions.push(x, y, 0.5, x, y, -0.5);
+  }
+  return positions;
+}
 const ALCHE_TOP_PRISM_REFRACTION_IDLE_TARGET_MAX = 512;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_TARGET_MAX = 384;
 const ALCHE_TOP_PRISM_REFRACTION_ACTIVE_INTERVAL = 1 / 30;
@@ -1105,7 +1173,7 @@ function CenterHeroModel({
     sceneTextureFallback.needsUpdate = true;
     const shadedMaterials: THREE.MeshStandardMaterial[] = [];
     const shadedGeometries = new Set<THREE.BufferGeometry>();
-    const edgeGeometries: THREE.EdgesGeometry[] = [];
+    const edgeGeometries: THREE.BufferGeometry[] = [];
     const prismIceUniforms: PrismIceUniforms = {
       uSceneTexture: { value: sceneTextureFallback },
       uViewportPx: { value: new THREE.Vector2(1, 1) },
@@ -1141,8 +1209,12 @@ function CenterHeroModel({
       polygonOffsetUnits: 1,
       side: THREE.DoubleSide,
     });
-    const edgeMaterial = new THREE.LineBasicMaterial({
-      color: ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR,
+    // Fat lines: WebGL ignores LineBasicMaterial.linewidth (always 1px), which
+    // could never match the reference's ~3px strokes.
+    const edgeMaterial = new LineMaterial({
+      color: new THREE.Color(ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR).getHex(),
+      linewidth: renderMode === "full" ? ALCHE_TOP_PRISM_CRYSTAL_EDGE_WIDTH_PX : ALCHE_TOP_PRISM_EDGE_OVERLAY_WIDTH_PX,
+      worldUnits: false,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -1164,18 +1236,29 @@ function CenterHeroModel({
       shadedGeometries.add(mesh.geometry as THREE.BufferGeometry);
     });
 
+    // Collect first: LineSegments2 is itself a Mesh, so adding it during
+    // traverse() would be visited and recurse forever.
+    const edgeMeshes: THREE.Mesh[] = [];
     edgeScene.traverse((child) => {
-      if (!("isMesh" in child) || child.isMesh !== true) return;
-      const mesh = child as THREE.Mesh;
+      if ("isMesh" in child && child.isMesh === true) edgeMeshes.push(child as THREE.Mesh);
+    });
+    edgeMeshes.forEach((mesh) => {
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.renderOrder = 5;
       mesh.material = hiddenMaterial;
-      const edgesGeometry = new THREE.EdgesGeometry(mesh.geometry as THREE.BufferGeometry);
-      const lines = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+      const lineGeometry = new LineSegmentsGeometry();
+      if (renderMode === "full") {
+        const edgesGeometry = new THREE.EdgesGeometry(mesh.geometry as THREE.BufferGeometry);
+        lineGeometry.fromEdgesGeometry(edgesGeometry);
+        edgesGeometry.dispose();
+      } else {
+        lineGeometry.setPositions(createPrismLogoLineArtPositions());
+      }
+      const lines = new LineSegments2(lineGeometry, edgeMaterial);
       lines.renderOrder = 7;
       lines.frustumCulled = false;
-      edgeGeometries.push(edgesGeometry);
+      edgeGeometries.push(lineGeometry);
       mesh.add(lines);
     });
 
@@ -1232,7 +1315,8 @@ function CenterHeroModel({
       maskedLineArtUniforms,
       rainbowUniforms,
     };
-  }, [gltf.scene]);
+    // renderMode picks the edge geometry (EdgesGeometry vs logo line-art).
+  }, [gltf.scene, renderMode]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -1349,6 +1433,7 @@ function CenterHeroModel({
     texturedScene.hiddenMaterial.depthWrite = renderMode === "edge-overlay";
     texturedScene.hiddenMaterial.polygonOffset = renderMode === "edge-overlay";
     texturedScene.edgeMaterial.color.set(renderMode === "full" ? ALCHE_TOP_PRISM_CRYSTAL_EDGE_COLOR : ALCHE_TOP_PRISM_EDGE_OVERLAY_COLOR);
+    texturedScene.edgeMaterial.resolution.set(state.size.width, state.size.height);
     texturedScene.edgeMaterial.opacity = THREE.MathUtils.damp(
       texturedScene.edgeMaterial.opacity,
       edgeVisibilityTarget,
@@ -1414,7 +1499,9 @@ function CenterHeroModel({
       (sceneState.kv.prismRainbowMix > 0.001 || texturedScene.rainbowUniforms.uOpacity.value > 0.001);
     texturedScene.shadedScene.visible = shadedVisible;
     texturedScene.edgeScene.visible = edgeVisible;
-    texturedScene.maskedLineArtScene.visible = lineArtVisible;
+    // Reference mission line-art is outline-only; the hatch fill read as a grey
+    // shaded body. (lineArtVisible still gates the rainbow face below.)
+    texturedScene.maskedLineArtScene.visible = false;
     texturedScene.rainbowScene.visible = rainbowVisible;
     groupRef.current.visible = shadedVisible || edgeVisible;
     if (!groupRef.current.visible) {
@@ -1518,9 +1605,15 @@ function CenterHeroModel({
     const turnMix = smoothstep(remapRange(yawFromFront / ALCHE_TOP_CENTER_MODEL.missionTurnRadians, 0.25, 0.9));
     const depthScale = texturedScene.modelScale * THREE.MathUtils.lerp(ALCHE_TOP_CENTER_MODEL.kvDepthScale, 1, turnMix);
     texturedScene.shadedScene.scale.z = depthScale;
-    texturedScene.edgeScene.scale.z = depthScale;
-    texturedScene.maskedLineArtScene.scale.z = depthScale;
-    texturedScene.rainbowScene.scale.z = depthScale;
+    // Line-art (edge-overlay) reads as a flat logo outline while front-facing
+    // (reference 滚動stage6: single strokes); separated front/back faces
+    // doubled every line. Depth returns with the mission turn.
+    // The rainbow face and hatch live in the same layer, so they share it.
+    const overlayDepthScale =
+      renderMode === "edge-overlay" ? texturedScene.modelScale * THREE.MathUtils.lerp(0.04, 1, turnMix) : depthScale;
+    texturedScene.edgeScene.scale.z = overlayDepthScale;
+    texturedScene.maskedLineArtScene.scale.z = overlayDepthScale;
+    texturedScene.rainbowScene.scale.z = overlayDepthScale;
     if (pointerDebugRef) {
       pointerDebugRef.current.modelRotationX = groupRef.current.rotation.x;
       pointerDebugRef.current.modelRotationY = groupRef.current.rotation.y;

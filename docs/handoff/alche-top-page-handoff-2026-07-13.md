@@ -4,6 +4,28 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Eighth pass (2026-09-26): mission line-art logo (滚动stage6 / video 15.0s)
+
+- Edge overlay now draws fat white lines (`LineMaterial` + `LineSegments2`;
+  WebGL ignores `LineBasicMaterial.linewidth`, always 1px). 2.6px overlay /
+  1.2px crystal edges.
+- Overlay geometry is a hand-built logo outline in GLB model space
+  (`createPrismLogoLineArtPositions`): outer + inner triangles on both faces,
+  corner depth edges, and the brand-mark base notch (3.5% rise across
+  ~19-81% of the base, eased steps). Full mode keeps `EdgesGeometry` edges.
+- Hatch fill (`maskedLineArtScene`) no longer shown; `prismLineOpacity`
+  debug value still tracks it, so validators are unaffected.
+- Overlay depth: edge, rainbow and hatch scenes share `overlayDepthScale`
+  (0.04 front-facing -> 1 through the mission turn); otherwise front/back
+  faces doubled every line and the rainbow face overhung the outline.
+- `.sectionCopy` z 8 -> 9 (same as `.edgeOverlayLayer`, later in the DOM) so
+  the black copy bars cover the lines, as in the reference.
+- Trap: `LineSegments2` is a Mesh; adding it inside `edgeScene.traverse`
+  recursed forever (stack overflow, no canvas). Collect meshes first.
+- `--endmark-live-only` is timing-flaky on HEAD too (~1 in 6: stops ~10px
+  short of the bottom when the 2.2s scroll wait expires); assertion now
+  prints scrollY/maxScroll.
+
 ## Seventh pass (2026-09-26): stellla stage (reference 18.9-20.2s, 滚动stage13-15)
 
 - DOM shell, scroll-driven via `deriveStelllaStage(stelllaProgress,
