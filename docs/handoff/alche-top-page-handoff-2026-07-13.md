@@ -4,6 +4,22 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Sixteenth pass (2026-09-27): panel flip on palette rotation
+
+- Shared chunk split: `ALCHE_WALL_KV_BASE_GLSL` (hashes, noise, fbm,
+  `alcheKvFlip`, vertex-safe) + `ALCHE_WALL_KV_GLSL` (content). `alcheKvFlip`
+  is the single source of timing: every 9 s a 2 s left-to-right sweep, each
+  panel flips over 0.3 of it (0.6 s) at `(hash*0.45 + x*0.55) * 0.7`.
+- Panels are now rigid boxes on the curve (pivot at wall point + normal *
+  (depth + thickness/2), tangent/normal frame) rotated a half turn about their
+  vertical axis with cubic in-out easing and a 14% mid-turn shrink; content
+  switches at `flip >= 0.5` (edge-on). Back faces use mirrored local x so the
+  image continues after the half turn; the next cycle resets the angle with no
+  visible pop. `alcheKvWallContent` takes a `sweepX` (panel centre for panels,
+  uv.x for the backing wall). Old white flash reduced to a faint edge glint.
+- Debug `?alcheWallTime=<s>` pins the wall clock (rotation forced on) for
+  capturing exact flip moments. Full suite green (41 min).
+
 ## Fifteenth pass (2026-09-27): real 3D LED panels
 
 - `createWallPanelMaterial` + `createWallPanelGeometry` (kv-scene-system):

@@ -367,7 +367,7 @@ export function createWorksPosterMaterial(map: THREE.Texture, uniforms: WorksPos
  * staggered panel sweep, per-panel edge falloff, LED dot mask, centre falloff
  * and a faint tiled wordmark.
  */
-export const ALCHE_WALL_KV_GLSL = /* glsl */ `
+export const ALCHE_WALL_KV_BASE_GLSL = /* glsl */ `
   float wallHash21(vec2 p) {
     p = fract(p * vec2(127.1, 311.7));
     p += dot(p, p + 34.23);
@@ -396,18 +396,34 @@ export const ALCHE_WALL_KV_GLSL = /* glsl */ `
     return v;
   }
 
-  // uv: wall uv [0,1]; panelLocal: uv inside the panel [0,1].
-  vec3 alcheKvWallContent(vec2 uv, vec2 panelId, vec2 panelLocal, float dotMask, float time, float cycle, sampler2D logoTex) {
+  // Palette rotation timing, shared by the panel flip (vertex) and the
+  // palette choice (fragment): every 9 s a 2 s left-to-right sweep; each
+  // panel flips over 0.6 s at its own moment. Returns flip progress 0..1.
+  float alcheKvFlip(float panelHash, float sweepX, float time, float cycle) {
+    float themeClock = time / 9.0;
+    float sweep01 = clamp((fract(themeClock) * 9.0 - 7.0) / 2.0, 0.0, 1.0);
+    float flipDur = 0.3;
+    float sweepAt = (panelHash * 0.45 + sweepX * 0.55) * (1.0 - flipDur);
+    return clamp((sweep01 - sweepAt) / flipDur, 0.0, 1.0) * step(0.001, sweep01) * clamp(cycle, 0.0, 1.0);
+  }
+`;
+
+export const ALCHE_WALL_KV_GLSL = /* glsl */ `
+  ${ALCHE_WALL_KV_BASE_GLSL}
+
+  // uv: wall uv [0,1]; panelLocal: uv inside the panel [0,1]; sweepX: where
+  // the panel sits in the sweep (panel centre for 3D panels, so a panel
+  // switches as a whole at the edge-on moment of its flip).
+  vec3 alcheKvWallContent(vec2 uv, vec2 panelId, vec2 panelLocal, float dotMask, float time, float cycle, sampler2D logoTex, float sweepX) {
     float panelHash = wallHash21(panelId + vec2(8.2, 2.4));
     float kvCycle = clamp(cycle, 0.0, 1.0);
     float themeClock = time / 9.0;
     float themeNow = mod(floor(themeClock), 3.0) * kvCycle;
     float themeNext = mod(floor(themeClock) + 1.0, 3.0) * kvCycle;
-    float sweep01 = clamp((fract(themeClock) * 9.0 - 7.6) / 1.4, 0.0, 1.0);
-    float sweepAt = panelHash * 0.45 + uv.x * 0.55;
-    float switched = step(sweepAt, sweep01) * step(0.001, sweep01);
+    float flip = alcheKvFlip(panelHash, sweepX, time, cycle);
+    float switched = step(0.5, flip);
     float panelTheme = mix(themeNow, themeNext, switched);
-    float switchFlash = exp(-abs(sweep01 - sweepAt) * 40.0) * step(0.001, sweep01) * kvCycle;
+    float switchFlash = exp(-abs(flip - 0.5) * 16.0) * step(0.001, flip) * (1.0 - step(0.999, flip)) * kvCycle;
 
     float glitchOn = step(0.9, wallHash21(panelId + vec2(floor(time * 0.7), 5.0)));
     vec2 glitch = (vec2(wallHash21(panelId + 11.0), wallHash21(panelId + 23.0)) - 0.5) * 0.14 * glitchOn;
@@ -447,7 +463,7 @@ export const ALCHE_WALL_KV_GLSL = /* glsl */ `
     );
     float logoMask = texture2D(logoTex, logoUv).a;
     content += mix(vec3(0.045, 0.045, 0.07), content * 0.6, 0.5) * logoMask * 0.6;
-    content += vec3(0.35, 0.36, 0.42) * switchFlash;
+    content += vec3(0.1, 0.1, 0.12) * switchFlash;
     return content;
   }
 `;
@@ -649,7 +665,7 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
         vec2 panelEdgeCells = min(panelLocal, 1.0 - panelLocal) * panelSize;
         float panelEdge = min(panelEdgeCells.x, panelEdgeCells.y);
         float panelSeam = 1.0 - smoothstep(0.012, 0.03, panelEdge);
-        vec3 kvContent = alcheKvWallContent(uv, panelId, panelLocal, dotMask, uTime, uThemeCycle, uLogoTex);
+        vec3 kvContent = alcheKvWallContent(uv, panelId, panelLocal, dotMask, uTime, uThemeCycle, uLogoTex, uv.x);
         // Added on top of the panel structure (tile tint, LED hairlines, dot
         // lattice): switched-off panels stay dark but never read as a hole.
         // Hidden where the instanced 3D panels take over (uPanelCover).
@@ -761,6 +777,8 @@ export function createWallPanelMaterial() {
       attribute vec4 aPanelRect;
       attribute vec4 aPanelInfo;
 
+      uniform float uTime;
+      uniform float uThemeCycle;
       uniform float uFlatten;
       uniform float uWallRadius;
       uniform float uWallHalfWidth;
@@ -777,6 +795,8 @@ export function createWallPanelMaterial() {
       varying float vSide;
       varying float vPointerGlow;
 
+      ${ALCHE_WALL_KV_BASE_GLSL}
+
       vec3 alcheWallPoint(float a, float b) {
         float flattenMix = smoothstep(0.0, 1.0, clamp(uFlatten, 0.0, 1.0));
         float curveMix = 1.0 - flattenMix;
@@ -788,21 +808,37 @@ export function createWallPanelMaterial() {
       }
 
       void main() {
-        vec2 local = position.xy + 0.5;
-        float a = mix(aPanelRect.x, aPanelRect.z, local.x);
-        float b = mix(aPanelRect.y, aPanelRect.w, local.y);
-        vec3 p = alcheWallPoint(a, b);
-        vec3 tangent = normalize(alcheWallPoint(a + 0.002, b) - p);
-        vec3 wallNormal = normalize(cross(tangent, vec3(0.0, 1.0, 0.0)));
-        p += wallNormal * (aPanelInfo.z + (position.z + 0.5) * uPanelThickness);
-
         vec2 centerAB = (aPanelRect.xy + aPanelRect.zw) * 0.5;
-        vec4 centerClip = projectionMatrix * modelViewMatrix * vec4(alcheWallPoint(centerAB.x, centerAB.y) + wallNormal * aPanelInfo.z, 1.0);
+        vec3 center = alcheWallPoint(centerAB.x, centerAB.y);
+        vec3 tangent = normalize(alcheWallPoint(centerAB.x + 0.002, centerAB.y) - center);
+        vec3 wallNormal = normalize(cross(tangent, vec3(0.0, 1.0, 0.0)));
+        float panelW = (aPanelRect.z - aPanelRect.x) * uWallHalfWidth;
+        float panelH = (aPanelRect.w - aPanelRect.y) * uWallHalfHeight;
+
+        // Flip: half turn about the panel's vertical axis (ease in-out),
+        // slight shrink mid-turn so edges don't clip into neighbours.
+        float panelHash = wallHash21(aPanelInfo.xy + vec2(8.2, 2.4));
+        float flip = alcheKvFlip(panelHash, centerAB.x * 0.5 + 0.5, uTime, uThemeCycle);
+        float eased = flip < 0.5 ? 4.0 * flip * flip * flip : 1.0 - pow(-2.0 * flip + 2.0, 3.0) * 0.5;
+        float angle = 3.14159265 * eased;
+        float shrink = 1.0 - 0.14 * sin(3.14159265 * flip);
+        vec3 lp = position * vec3(panelW * shrink, panelH * shrink, uPanelThickness);
+        float ca = cos(angle);
+        float sa = sin(angle);
+        vec2 xz = vec2(lp.x * ca + lp.z * sa, -lp.x * sa + lp.z * ca);
+        vec3 pivot = center + wallNormal * (aPanelInfo.z + uPanelThickness * 0.5);
+        vec3 p = pivot + tangent * xz.x + vec3(0.0, 1.0, 0.0) * lp.y + wallNormal * xz.y;
+
+        vec4 centerClip = projectionMatrix * modelViewMatrix * vec4(pivot, 1.0);
         vec2 centerNdc = centerClip.xy / max(centerClip.w, 0.0001);
         vec2 pointerDelta = (centerNdc - uPointer) * vec2(uAspect, 1.0);
         vPointerGlow = exp(-dot(pointerDelta, pointerDelta) * 3.5) * uPointerActive;
 
-        vWallUv = vec2(a, b) * 0.5 + 0.5;
+        // Content stays attached to the face; the back face is un-mirrored so
+        // it continues the image once the half turn brings it to the front.
+        vec2 local = position.xy + 0.5;
+        if (normal.z < -0.5) local.x = 1.0 - local.x;
+        vWallUv = vec2(mix(aPanelRect.x, aPanelRect.z, local.x), mix(aPanelRect.y, aPanelRect.w, local.y)) * 0.5 + 0.5;
         vCenterUv = centerAB * 0.5 + 0.5;
         vLocal = local;
         vPanelId = aPanelInfo.xy;
@@ -840,9 +876,9 @@ export function createWallPanelMaterial() {
           dotMask = mix(dotMask, 0.45, smoothstep(0.3, 0.6, dotFootprint));
           // Base keeps switched-off panels a readable dark screen.
           col = vec3(0.007, 0.007, 0.012) * (0.7 + dotMask * 0.6)
-            + alcheKvWallContent(vWallUv, panelId, vLocal, dotMask, uTime, uThemeCycle, uLogoTex);
+            + alcheKvWallContent(vWallUv, panelId, vLocal, dotMask, uTime, uThemeCycle, uLogoTex, vCenterUv.x);
         } else {
-          vec3 panelColor = alcheKvWallContent(vCenterUv, panelId, vec2(0.5), 1.0, uTime, uThemeCycle, uLogoTex);
+          vec3 panelColor = alcheKvWallContent(vCenterUv, panelId, vec2(0.5), 1.0, uTime, uThemeCycle, uLogoTex, vCenterUv.x);
           col = vec3(0.012, 0.012, 0.02) + panelColor * (0.55 + vPointerGlow * 2.6);
         }
         gl_FragColor = vec4(col * uExposure, clamp(uVisibility, 0.0, 1.0));

@@ -564,6 +564,14 @@ function CurvedMediaWall({
     );
   }, []);
   const panelsRef = useRef<THREE.Mesh>(null);
+  // Debug: ?alcheWallTime=<seconds> pins the wall content clock (palette
+  // rotation forced on) so any moment of a panel flip can be captured.
+  const pinnedWallTime = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const raw = new URLSearchParams(window.location.search).get("alcheWallTime");
+    const value = raw === null ? Number.NaN : Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }, []);
   // Window-level pointer (the DOM shell covers the canvas), NDC, +y up.
   const panelPointerRef = useRef({ x: 0, y: 0, active: 0 });
   useEffect(() => {
@@ -634,7 +642,10 @@ function CurvedMediaWall({
     material.uniforms.uZebra.value = THREE.MathUtils.damp(material.uniforms.uZebra.value, sceneState.kv.wallZebra, 3.6, delta);
     // Palette rotation only when motion is welcome (static violet otherwise,
     // and in captures so pinned shots are deterministic).
-    material.uniforms.uThemeCycle.value = animateContent ? 1 : 0;
+    const wallTime = pinnedWallTime ?? state.clock.elapsedTime;
+    const wallCycle = pinnedWallTime !== null || animateContent ? 1 : 0;
+    material.uniforms.uThemeCycle.value = wallCycle;
+    material.uniforms.uTime.value = wallTime;
 
     // 3D panels carry the kv content wherever the backing wall would show it
     // (not over the works zebra / poster echo / mission paper), fading and
@@ -647,8 +658,8 @@ function CurvedMediaWall({
       (1 - THREE.MathUtils.smoothstep(material.uniforms.uWhiteMix.value, 0, 1));
     material.uniforms.uPanelCover.value = panelVisibility;
     const panelUniforms = panelMaterial.uniforms;
-    panelUniforms.uTime.value = state.clock.elapsedTime;
-    panelUniforms.uThemeCycle.value = animateContent ? 1 : 0;
+    panelUniforms.uTime.value = wallTime;
+    panelUniforms.uThemeCycle.value = wallCycle;
     panelUniforms.uVisibility.value = panelVisibility;
     panelUniforms.uExposure.value = material.uniforms.uExposure.value;
     panelUniforms.uFlatten.value = material.uniforms.uFlatten.value;
