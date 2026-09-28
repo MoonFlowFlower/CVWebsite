@@ -4,6 +4,25 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Nineteenth pass (2026-09-28): vision pose from the reference shader
+
+- Section-by-section review vs the reference video (live sweep + matched
+  beats). The one real mismatch: vision. Reference logo vertex shader rotates
+  only `uVisionRotate*0.15*HPI` (~13.5 deg yaw) + ~-0.1 rad pitch, so the
+  outline stays front-facing and the left side face opens into a slanted
+  rainbow band; the full-screen flood is a morph toward the 90-degree side
+  view. Ours yawed a full 90 deg (outline vanished, flat face-on slab).
+- Now: `missionTurnRadians` 0.236 + `missionTurnPitch` -0.1; during the cover
+  the yaw continues to `coverTurnRadians` 1.57 (smoothstep of cover) while the
+  zoom eases in (`pow(cover, 2.4)`, still 6.2 at full cover).
+- Rainbow face: swirling holographic marble (lime -> cyan -> blue -> violet
+  -> pink, hue 0.24-0.9) from domain-warped waves in the face's own plane
+  (`dot(pos, faceTangent)`, `pos.z`); x/y alone only varied along the edge,
+  which read as flat green when zoomed.
+- Reviewed and not bugs: endmark looks slow in headless sweeps only (GSAP lag
+  smoothing on multi-second software frames; timeline is ~3.5 s by design).
+- Full suite green (39 min).
+
 ## Eighteenth pass (2026-09-28): swirling fluid
 
 - Fluid moved to `scene/wall-fluid.ts` (`WallFluid` class) and upgraded to

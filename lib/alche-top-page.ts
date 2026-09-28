@@ -409,7 +409,13 @@ export const ALCHE_TOP_CENTER_MODEL = {
   // Reference kv crystal points up (apex at top); the GLB is authored apex-up,
   // so no Z flip. (Was Math.PI during the inverted-triangle phase.)
   baseRotationZ: 0,
-  missionTurnRadians: 1.57,
+  // Reference vision pose (from its logo vertex shader): only ~13.5 deg of
+  // yaw plus a slight pitch, so the outline stays front-facing and the left
+  // side face opens into a slanted rainbow band. (1.57 turned it edge-on.)
+  missionTurnRadians: 0.236,
+  missionTurnPitch: -0.1,
+  // Side-view yaw the cover ends on (the old mission turn).
+  coverTurnRadians: 1.57,
   missionTurnStartOffset: 0,
   coverScale: 6.2,
   // Mouse-follow tilt in radians at the viewport edge.
@@ -1039,9 +1045,18 @@ export function deriveTopSceneState(
       ALCHE_TOP_CENTER_MODEL.baseRotationY +
       ALCHE_TOP_CENTER_MODEL.missionTurnStartOffset +
       ALCHE_TOP_CENTER_MODEL.missionTurnRadians * missionTurnMix;
+    kv.prismRotationX = ALCHE_TOP_CENTER_MODEL.baseRotationX + ALCHE_TOP_CENTER_MODEL.missionTurnPitch * missionTurnMix;
+  }
+  if (visionCoverMix > 0) {
+    // Reference cover: the logo morphs toward its 90-degree side view while
+    // it grows, so the rainbow face swings toward the camera and widens into
+    // the slab that floods the screen.
+    kv.prismRotationY += (ALCHE_TOP_CENTER_MODEL.coverTurnRadians - ALCHE_TOP_CENTER_MODEL.missionTurnRadians) * smoothstep(visionCoverMix);
   }
   kv.prismRainbowMix = missionTurnMix;
-  kv.prismGroupScale = 1 + (ALCHE_TOP_CENTER_MODEL.coverScale - 1) * visionCoverMix;
+  // Ease-in zoom: reference keeps a slanted slab (~1.6x at 16.0s) and only
+  // floods the screen at the end of the cover.
+  kv.prismGroupScale = 1 + (ALCHE_TOP_CENTER_MODEL.coverScale - 1) * Math.pow(visionCoverMix, 2.4);
   kv.prismRainbowBlackMix = visionBlackMix;
 
   if (runtimeSection === "works_intro") {

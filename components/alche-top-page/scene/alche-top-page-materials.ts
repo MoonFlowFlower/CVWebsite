@@ -1138,10 +1138,19 @@ export function createPrismSideRainbowMaterial(uniforms?: PrismSideRainbowUnifor
           vModelPos.x * 0.08 +
           warp +
           uTime * 0.028;
-        // Reference vision slab (video 15.0-16.0s): a vivid full-spectrum
-        // gradient running along the face (red/orange at one end through
-        // yellow, green, cyan to blue/violet), with soft glossy streaks.
-        float hue = fract(0.02 + vUv.y * 0.55 + vModelPos.y * 0.16 + warp * 0.6 + uTime * 0.02);
+        // Reference vision slab (video 15.4-16.2s): a swirling holographic
+        // marble - lime, cyan, blue, violet and pink flowing across the whole
+        // face (domain-warped waves), so any crop of the zoomed slab still
+        // shows the full range. A 1D gradient read as flat green when zoomed.
+        // Coordinates in the face's own plane: along its edge and through
+        // the crystal depth (x/y alone only vary along the edge -> 1D bands).
+        vec3 faceTangent = normalize(cross(targetFaceNormal, vec3(0.0, 0.0, 1.0)));
+        vec2 holo = vec2(dot(vModelPos, faceTangent) * 1.35, vModelPos.z * 2.7);
+        float swirlA = sin(holo.x * 2.1 + sin(holo.y * 1.7 + uTime * 0.3) * 1.8 + uTime * 0.2);
+        float swirlB = sin(holo.y * 2.6 + sin(holo.x * 2.3 - uTime * 0.25) * 1.5 - uTime * 0.15);
+        float swirlC = sin((holo.x - holo.y) * 1.4 + swirlA * 1.2 + uTime * 0.1);
+        float holoT = clamp(0.5 + (swirlA * 0.3 + swirlB * 0.3 + swirlC * 0.25) + warp * 0.4, 0.0, 1.0);
+        float hue = mix(0.24, 0.9, holoT);
 
         float band = sin((vModelPos.y * 2.2 - vModelPos.x * 1.05) * 2.6 + uTime * 0.9) * 0.5 + 0.5;
         float grain = hash21(gl_FragCoord.xy * 0.91 + vec2(uTime * 24.0, uTime * 16.0));
