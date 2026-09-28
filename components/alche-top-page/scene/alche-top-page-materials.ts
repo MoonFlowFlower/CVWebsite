@@ -766,67 +766,6 @@ export function createCurvedGridMaterial(_wallTexture: THREE.Texture) {
  * depth. Front faces show the shared kv content; side faces glow with the
  * panel's colour, brighter near the pointer.
  */
-/**
- * Pointer fluid for the kv LED wall (the reference feeds a fluid texture into
- * its panel sides and grid; own compact implementation). One RGBA half-float
- * ping-pong field in screen uv: rg = velocity (uv/s), b = dye. Each step
- * advects the field along its own velocity (semi-Lagrangian), dissipates it,
- * and splats the pointer's motion along the segment it travelled this frame,
- * so a flowing, fading trail follows the cursor.
- */
-export function createWallFluidStepMaterial() {
-  return new THREE.ShaderMaterial({
-    depthTest: false,
-    depthWrite: false,
-    uniforms: {
-      uPrev: { value: null as THREE.Texture | null },
-      uPointer: { value: new THREE.Vector2(0.5, 0.5) },
-      uPointerPrev: { value: new THREE.Vector2(0.5, 0.5) },
-      uDt: { value: 1 / 60 },
-      uAspect: { value: 1 },
-      uActive: { value: 0 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = vec4(position.xy, 0.0, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D uPrev;
-      uniform vec2 uPointer;
-      uniform vec2 uPointerPrev;
-      uniform float uDt;
-      uniform float uAspect;
-      uniform float uActive;
-      varying vec2 vUv;
-
-      void main() {
-        float dt = clamp(uDt, 0.001, 0.05);
-        vec4 here = texture2D(uPrev, vUv);
-        vec4 advected = texture2D(uPrev, vUv - here.xy * dt);
-        vec2 velocity = advected.xy * pow(0.35, dt);
-        float dye = advected.z * pow(0.45, dt);
-
-        // Splat along the pointer's path this frame (capsule falloff).
-        vec2 seg = uPointer - uPointerPrev;
-        float h = clamp(dot(vUv - uPointerPrev, seg) / max(dot(seg, seg), 1e-7), 0.0, 1.0);
-        vec2 q = (vUv - (uPointerPrev + seg * h)) * vec2(uAspect, 1.0);
-        float splat = exp(-dot(q, q) / 0.0028) * uActive;
-        vec2 pointerVelocity = seg / dt;
-        float speed = length(pointerVelocity);
-        velocity += pointerVelocity * splat * 0.55;
-        dye += splat * clamp(speed * 1.2, 0.0, 1.0) * dt * 22.0;
-
-        float vLen = length(velocity);
-        velocity *= min(1.0, 2.5 / max(vLen, 1e-4));
-        gl_FragColor = vec4(velocity, clamp(dye, 0.0, 3.0), 1.0);
-      }
-    `,
-  });
-}
-
 export function createWallPanelMaterial() {
   return new THREE.ShaderMaterial({
     side: THREE.FrontSide,
@@ -969,10 +908,11 @@ export function createWallPanelMaterial() {
           col = vec3(0.007, 0.007, 0.012) * (0.7 + dotMask * 0.6)
             + alcheKvWallContent(vWallUv, panelId, vLocal, dotMask, uTime, uThemeCycle, uLogoTex, vCenterUv.x);
           vec3 frontTint = alcheKvWallContent(vCenterUv, panelId, vec2(0.5), 1.0, uTime, uThemeCycle, uLogoTex, vCenterUv.x);
-          col += (frontTint * 2.2 + vec3(0.14, 0.15, 0.21)) * clamp(fluidHere.z, 0.0, 1.5) * (0.55 + dotMask * 0.7);
+          col += (frontTint * 1.8 + vec3(0.1, 0.105, 0.15)) * clamp(fluidHere.z, 0.0, 1.2) * (0.55 + dotMask * 0.7);
         } else {
           vec3 panelColor = alcheKvWallContent(vCenterUv, panelId, vec2(0.5), 1.0, uTime, uThemeCycle, uLogoTex, vCenterUv.x);
-          float emit = clamp(fluidPanel.z * 1.2 + length(fluidPanel.xy) * 0.35, 0.0, 2.0);
+          // Velocity is in fluid texels/s (192 across the screen).
+          float emit = clamp(fluidPanel.z * 1.2 + length(fluidPanel.xy) * 0.0018, 0.0, 2.0);
           col = vec3(0.012, 0.012, 0.02) + panelColor * (0.55 + emit * 4.0) + vec3(0.35, 0.37, 0.45) * emit;
         }
         gl_FragColor = vec4(col * uExposure, clamp(uVisibility, 0.0, 1.0));

@@ -4,6 +4,20 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Eighteenth pass (2026-09-28): swirling fluid
+
+- Fluid moved to `scene/wall-fluid.ts` (`WallFluid` class) and upgraded to
+  the stable-fluids pipeline: curl -> vorticity confinement (strength 20) ->
+  divergence (reflecting borders) -> 16 Jacobi pressure iterations -> subtract
+  gradient -> self-advection + dissipation + pointer splat. Velocity is now in
+  fluid texels/s (192x108), so the panel side emit scales |v| by 0.0018.
+- First pass was far too strong (whole areas washed in bright cloud): dye
+  injection halved, push 0.6 -> 0.4, dye decay 0.45 -> 0.4. Trail now reads
+  as curling lavender plumes that keep rolling after the pointer passes.
+- Trap: fragment passes need their own `uniform vec2 uTexel` (only the vertex
+  shader declared it; compile error).
+- Full suite green (36 min).
+
 ## Seventeenth pass (2026-09-27): pointer fluid trail
 
 - `createWallFluidStepMaterial` + `createWallFluid` (kv-scene-system): one

@@ -34,7 +34,6 @@ import {
 } from "@/lib/alche-top-page";
 import {
   createCurvedGridMaterial,
-  createWallFluidStepMaterial,
   createWallPanelMaterial,
   createPrismIceMaterial,
   type PrismIceUniforms,
@@ -45,6 +44,7 @@ import {
   createWorksPosterMaterial,
   type WorksPosterUniforms,
 } from "@/components/alche-top-page/scene/alche-top-page-materials";
+import { WallFluid } from "@/components/alche-top-page/scene/wall-fluid";
 import { createBentCardGeometry, placeOnArc } from "@/components/alche-top-page/scene/bent-card-helpers";
 import { assetPath } from "@/lib/site";
 
@@ -541,30 +541,6 @@ function createWallPanelGeometry(halfWidth: number, halfHeight: number) {
   return geometry;
 }
 
-/** Ping-pong pointer fluid (see createWallFluidStepMaterial). */
-function createWallFluid() {
-  const width = 192;
-  const height = 108;
-  const makeTarget = () =>
-    new THREE.WebGLRenderTarget(width, height, {
-      type: THREE.HalfFloatType,
-      format: THREE.RGBAFormat,
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      depthBuffer: false,
-      stencilBuffer: false,
-      generateMipmaps: false,
-    });
-  const targets = [makeTarget(), makeTarget()];
-  const material = createWallFluidStepMaterial();
-  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-  quad.frustumCulled = false;
-  const scene = new THREE.Scene();
-  scene.add(quad);
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  return { targets, material, quad, scene, camera, read: 0, cleared: false, idleFrames: 0 };
-}
-
 function CurvedMediaWall({
   sceneState,
   wallTexturePath,
@@ -589,16 +565,10 @@ function CurvedMediaWall({
     );
   }, []);
   const panelsRef = useRef<THREE.Mesh>(null);
-  const fluid = useMemo(() => createWallFluid(), []);
+  const fluid = useMemo(() => new WallFluid(), []);
+  const fluidIdleFramesRef = useRef(0);
   const fluidPointerPrevRef = useRef(new THREE.Vector2(0.5, 0.5));
-  useEffect(
-    () => () => {
-      fluid.targets.forEach((target) => target.dispose());
-      fluid.material.dispose();
-      fluid.quad.geometry.dispose();
-    },
-    [fluid],
-  );
+  useEffect(() => () => fluid.dispose(), [fluid]);
   // Debug: ?alcheWallTime=<seconds> pins the wall content clock (palette
   // rotation forced on) so any moment of a panel flip can be captured.
   const pinnedWallTime = useMemo(() => {
@@ -706,39 +676,21 @@ function CurvedMediaWall({
     // welcome; otherwise let it fade out and stop simulating once empty.
     const gl = state.gl;
     const fluidActive = animateContent && panelVisibility > 0.002;
-    if (!fluid.cleared) {
-      const previousTarget = gl.getRenderTarget();
-      const previousClear = gl.getClearColor(new THREE.Color());
-      const previousAlpha = gl.getClearAlpha();
-      gl.setClearColor(0x000000, 0);
-      fluid.targets.forEach((target) => {
-        gl.setRenderTarget(target);
-        gl.clear(true, false, false);
-      });
-      gl.setRenderTarget(previousTarget);
-      gl.setClearColor(previousClear, previousAlpha);
-      fluid.cleared = true;
-    }
-    fluid.idleFrames = fluidActive ? 0 : fluid.idleFrames + 1;
-    if (fluid.idleFrames < 240) {
+    fluidIdleFramesRef.current = fluidActive ? 0 : fluidIdleFramesRef.current + 1;
+    const fluidRunning = fluidIdleFramesRef.current < 240;
+    if (fluidRunning) {
       const pointerUv = new THREE.Vector2(pointer.x * 0.5 + 0.5, pointer.y * 0.5 + 0.5);
-      const fluidUniforms = fluid.material.uniforms;
-      fluidUniforms.uPrev.value = fluid.targets[fluid.read].texture;
-      fluidUniforms.uPointerPrev.value.copy(fluidPointerPrevRef.current);
-      fluidUniforms.uPointer.value.copy(pointerUv);
-      fluidUniforms.uDt.value = delta;
-      fluidUniforms.uAspect.value = state.size.width / Math.max(state.size.height, 1);
-      fluidUniforms.uActive.value = fluidActive && pointer.active > 0 ? 1 : 0;
-      const write = 1 - fluid.read;
-      const previousTarget = gl.getRenderTarget();
-      gl.setRenderTarget(fluid.targets[write]);
-      gl.render(fluid.scene, fluid.camera);
-      gl.setRenderTarget(previousTarget);
-      fluid.read = write;
+      fluid.step(gl, {
+        pointerUv,
+        pointerPrevUv: fluidPointerPrevRef.current,
+        dt: delta,
+        aspect: state.size.width / Math.max(state.size.height, 1),
+        active: fluidActive && pointer.active > 0,
+      });
       fluidPointerPrevRef.current.copy(pointerUv);
     }
-    const fluidTexture = fluid.targets[fluid.read].texture;
-    const fluidMix = fluid.idleFrames < 240 ? 1 : 0;
+    const fluidTexture = fluid.texture;
+    const fluidMix = fluidRunning ? 1 : 0;
     panelUniforms.uFluidTex.value = fluidTexture;
     panelUniforms.uFluidMix.value = fluidMix;
     material.uniforms.uFluidTex.value = fluidTexture;
