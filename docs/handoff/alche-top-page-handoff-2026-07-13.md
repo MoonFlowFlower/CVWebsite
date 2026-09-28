@@ -4,6 +4,27 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Seventeenth pass (2026-09-27): pointer fluid trail
+
+- `createWallFluidStepMaterial` + `createWallFluid` (kv-scene-system): one
+  RGBA half-float ping-pong field (192x108, screen uv): rg velocity (uv/s),
+  b dye. Each frame: semi-Lagrangian self-advection, dissipation
+  (velocity 0.35^dt, dye 0.45^dt), capsule splat along the pointer's segment
+  this frame (radius^2 0.0028, aspect-corrected), velocity clamp 2.5. Stepped
+  in `CurvedMediaWall`'s useFrame before the composer renders; targets
+  cleared once on first frame (renderer autoClear is off under the composer).
+- Consumers (exact screen uv via a clip-space varying): panel sides emit
+  with dye + |velocity| sampled at the panel pivot; panel fronts get a
+  panel-tinted + cool white wash; backing wall grid hairlines, frame lines and
+  `+` markers light along the trail (kv content only). The old
+  pointer-distance side glow is superseded (`vPointerGlow` now unused).
+- Runs only while `animateContent` and panels are visible; after 240 idle
+  frames it stops stepping and `uFluidMix` goes to 0. Works with
+  `?alcheWallTime` (the pin only freezes the palette clock).
+- Verified with a before/after screenshot diff of a scripted mouse arc (the
+  first pass was too faint: dye, radius, persistence and glow raised).
+- Full suite green (35 min).
+
 ## Sixteenth pass (2026-09-27): panel flip on palette rotation
 
 - Shared chunk split: `ALCHE_WALL_KV_BASE_GLSL` (hashes, noise, fbm,
