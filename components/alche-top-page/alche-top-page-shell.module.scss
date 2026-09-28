@@ -563,9 +563,10 @@
   inset: -10%;
   background-position: center;
   background-size: cover;
-  filter: blur(46px) saturate(0.7) brightness(0.5);
+  /* Dim wash: reference room background sits around 22/255. */
+  filter: blur(46px) saturate(0.75) brightness(0.3);
   /* Black behind the portal close-up; the media wash arrives with the room. */
-  opacity: calc(0.55 * var(--service-entry, 1));
+  opacity: calc(0.4 * var(--service-entry, 1));
   transition: background-image 600ms ease;
 }
 
@@ -587,7 +588,7 @@
   letter-spacing: -0.02em;
   /* Bright white through the portal (reference 16.6s), dim wall lettering once
      the room settles. */
-  color: rgba(214, 218, 230, calc(0.16 + (1 - var(--service-entry, 1)) * 0.6));
+  color: rgba(214, 218, 230, calc(0.1 + (1 - var(--service-entry, 1)) * 0.66));
   /* Portal colour split: offset and alpha both fade out as the room settles
      (a 0px shadow at full alpha tinted the whole word pink). */
   text-shadow:

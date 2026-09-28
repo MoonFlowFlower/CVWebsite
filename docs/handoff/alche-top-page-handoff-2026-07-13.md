@@ -4,6 +4,21 @@ Date: `2026-07-13` (second pass appended same day)
 
 Supersedes: [`alche-top-page-handoff-2026-04-29.md`](./alche-top-page-handoff-2026-04-29.md)
 
+## Twentieth pass (2026-09-28): kv composition + service room brightness
+
+- KV crystal measured vs reference 5.0 s: reference spans ~7%-82% of the
+  screen height with the wordmark through its middle; ours was ~18%-79%.
+  New `kvScale` 1.23 and `kvLift` 0.14 (world y, new `kv.prismLift` state,
+  added to the group target y) apply in `loading`/`kv` only, after the cover
+  line (which rewrites `prismGroupScale` every frame). works_intro blends them
+  out over progress 0-0.35 - done before the turn's swell (the first try
+  blended over the whole spin and stacked to 1.545 > the 1.5 works_intro
+  model-scale limit). Mission/vision sizes unchanged (they already matched).
+- Service room: background median was 51-59 vs reference 22-24. Wash
+  `brightness(0.3)` / opacity 0.4 (was 0.5 / 0.55), settled SERVICES letters
+  alpha 0.1 (was 0.16). Now 23-27.
+- Full suite green (38 min).
+
 ## Nineteenth pass (2026-09-28): vision pose from the reference shader
 
 - Section-by-section review vs the reference video (live sweep + matched

@@ -115,6 +115,8 @@ export interface AlcheKvSceneState {
   prismRainbowMix: number;
   prismRainbowBlackMix: number;
   prismGroupScale: number;
+  // Extra world-space lift of the crystal (kv composition only).
+  prismLift: number;
   hudVisibility: number;
 }
 
@@ -416,6 +418,10 @@ export const ALCHE_TOP_CENTER_MODEL = {
   missionTurnPitch: -0.1,
   // Side-view yaw the cover ends on (the old mission turn).
   coverTurnRadians: 1.57,
+  // First-screen composition vs the reference kv (crystal ~75% of the screen
+  // height, wordmark through its middle).
+  kvScale: 1.23,
+  kvLift: 0.14,
   missionTurnStartOffset: 0,
   coverScale: 6.2,
   // Mouse-follow tilt in radians at the viewport edge.
@@ -715,6 +721,7 @@ export function deriveKvSceneState(introProgress: number, heroShotId: AlcheHeroS
     prismRainbowMix: 0,
     prismRainbowBlackMix: 0,
     prismGroupScale: 1,
+    prismLift: 0,
     hudVisibility: intro.hudReveal * (1 - handoffMix * 0.72),
   };
 }
@@ -1057,6 +1064,10 @@ export function deriveTopSceneState(
   // Ease-in zoom: reference keeps a slanted slab (~1.6x at 16.0s) and only
   // floods the screen at the end of the cover.
   kv.prismGroupScale = 1 + (ALCHE_TOP_CENTER_MODEL.coverScale - 1) * Math.pow(visionCoverMix, 2.4);
+  if (runtimeSection === "loading" || runtimeSection === "kv") {
+    kv.prismGroupScale *= ALCHE_TOP_CENTER_MODEL.kvScale;
+    kv.prismLift = ALCHE_TOP_CENTER_MODEL.kvLift;
+  }
   kv.prismRainbowBlackMix = visionBlackMix;
 
   if (runtimeSection === "works_intro") {
@@ -1069,7 +1080,11 @@ export function deriveTopSceneState(
     kv.prismRotationY = ALCHE_TOP_CENTER_MODEL.baseRotationY + Math.PI * spin;
     kv.prismRotationX = ALCHE_TOP_CENTER_MODEL.baseRotationX + 0.3 * wobble;
     kv.prismRotationZ = ALCHE_TOP_CENTER_MODEL.baseRotationZ - 0.24 * wobble;
-    kv.prismGroupScale = 1 + 0.42 * wobble;
+    // First-screen composition blends out as the crystal turns.
+    // Done before the turn's swell peaks, so the two never stack.
+    const kvCompose = 1 - smoothstep(remapRange(progress, 0, 0.35));
+    kv.prismGroupScale = (1 + 0.42 * wobble) * (1 + (ALCHE_TOP_CENTER_MODEL.kvScale - 1) * kvCompose);
+    kv.prismLift = ALCHE_TOP_CENTER_MODEL.kvLift * kvCompose;
     kv.wallZebra = smoothstep(remapRange(progress, 0.3, 0.8));
   }
 

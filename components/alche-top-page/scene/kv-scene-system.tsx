@@ -1864,7 +1864,7 @@ function CenterHeroModel({
     );
     groupRef.current.position.y = THREE.MathUtils.damp(
       groupRef.current.position.y,
-      targetPosition.y,
+      targetPosition.y + sceneState.kv.prismLift,
       ALCHE_TOP_CENTER_MODEL.rotationDamp,
       delta,
     );
